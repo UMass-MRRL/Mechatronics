@@ -25,6 +25,12 @@ Choose a simulator below to **run it in your browser**. Each image and **Run Onl
 | **[▶ Run Online](https://umass-mrrl.github.io/Mechatronics/motor.html)** · [View Source](https://github.com/UMass-MRRL/Mechatronics/blob/main/motor.html) | **[▶ Run Online](https://umass-mrrl.github.io/Mechatronics/coreless.html)** · [View Source](https://github.com/UMass-MRRL/Mechatronics/blob/main/coreless.html) | **[▶ Run Online](https://umass-mrrl.github.io/Mechatronics/brushless.html)** · [View Source](https://github.com/UMass-MRRL/Mechatronics/blob/main/brushless.html) |
 | Winding turns, wire diameter, geometry, magnet selection, load, gearing, torque-speed curves, transient response, and sensitivity. | Ironless winding geometry, rotating copper shell, magnet dimensions, torque and inertia, dynamic response, and thermal trends. | Slotless brushless topology, pole count, stationary phase winding, yoke flux, theoretical iron loss, and commutation visualization. |
 
+### Optional MATLAB version (brushed DC motor)
+
+Prefer working in MATLAB? **[Download DC Motor Designer for MATLAB v2.2 (ZIP)](https://umass-mrrl.github.io/Mechatronics/DCMotorDesignerMATLAB_v2.2.zip)**. This is an additional interactive brushed DC motor teaching tool with motor drawings, performance curves, transient and thermal responses, and sensitivity analysis. The author has confirmed that the MATLAB GUI runs. It is a **separate implementation**, not an exact numerical replica of the browser simulator.
+
+The GUI requires **base MATLAB**; no additional App Designer toolbox is needed. The ZIP also contains an **optional Simulink model generator**, which requires Simulink. The browser simulators remain fully usable without MATLAB.
+
 ### Digital communication and timing
 
 | I²C Bus Inspector | SPI Bus Inspector | UART / Serial Inspector |
@@ -47,6 +53,18 @@ Open **[the simulator collection](https://umass-mrrl.github.io/Mechatronics/)** 
 
 **No installation, build process, MATLAB/Python runtime, or JavaScript framework is required.** The simulation logic runs in the browser. Some pages request optional web fonts; the functional simulations do not depend on those fonts.
 
+### Option C: Try the MATLAB DC Motor Designer (optional)
+
+1. Download **[DCMotorDesignerMATLAB_v2.2.zip](https://umass-mrrl.github.io/Mechatronics/DCMotorDesignerMATLAB_v2.2.zip)** and extract it.
+2. In MATLAB, set the **Current Folder** to the extracted directory.
+3. Run:
+
+   ```matlab
+   DCMotorDesignerMATLAB
+   ```
+
+The MATLAB GUI is self-contained in `DCMotorDesignerMATLAB.m`. See the README included in the ZIP for the optional Simulink exercise, numerical test script, and modeling assumptions.
+
 ### For repository maintainers: GitHub Pages
 
 The live links assume this repository is published from the `main` branch, repository root, at `https://umass-mrrl.github.io/Mechatronics/`. To configure or check deployment, open **Settings → Pages**, then verify **Deploy from a branch → main → / (root)**. Keep `index.html`, the six simulator HTML files, `README.md`, and the `assets/` folder at repository root. New uploads may take time to appear on GitHub Pages after a commit.
@@ -63,6 +81,9 @@ The live links assume this repository is published from the `main` branch, repos
 ├── i2c.html
 ├── spi.html
 ├── uart.html
+├── DCMotorDesignerMATLAB_v2.2.zip  # Optional MATLAB demo
+├── MODEL_NOTES.md
+├── RELEASE_NOTES.md
 └── assets/
     ├── overview.png
     ├── motor.png
@@ -120,6 +141,7 @@ These simulations intentionally simplify real electromechanical and digital syst
 - **Motors:** Geometries, magnetic circuits, winding fill, friction, iron losses, commutation, gearbox behavior, thermal networks, and material properties are simplified. Calculated power, temperature, speed, torque, and any stall-time estimate are theoretical outputs, not rated or validated hardware specifications. Open-loop voltage/current drive and regenerative operation assume idealized electrical behavior. The brushless six-step versus sinusoidal selection affects the illustration, not a separately solved inverter/phase-current model. High-flux or saturated states can fall outside model validity.
 - **I²C and SPI:** Signal integrity, rise times, output impedance, clocking, board interconnects, and transaction timing use instructional approximations. Register data values are examples; presented code is conceptual and has not been verified as a standalone hardware sketch. The illustrated bus connections are not substitutes for a wiring diagram, checked pin assignments, or a verified voltage-compatibility analysis. The breakout-level-shifter statement applies to the **Adafruit breakout**, not the bare LSM6DS3TR-C chip.
 - **UART:** Receiver sampling illustrates baud mismatch under ideal assumptions (8N1, single start edge, center sampling). Real UARTs commonly employ implementation-dependent oversampling, synchronization and error handling. This page is not a serial transceiver model; a passing stop-bit check does not guarantee correct data.
+- **MATLAB option:** The included v2.2 ZIP is a separate, simplified educational implementation of the brushed DC motor model. It is not an independently validated motor-design tool, and it is not guaranteed to reproduce every numerical result of the browser version.
 
 **No quantitative motor-accuracy claim, hardware-compliance claim, or fitness-for-purpose claim is made.** Before applying any result to real hardware, verify it against primary datasheets, engineering calculations, relevant standards, and physical measurements. The author and university are not providing certification, design approval, or an assurance of safe operation.
 

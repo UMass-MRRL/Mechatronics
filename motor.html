@@ -122,6 +122,10 @@ details.assume-wrap[open] summary{margin-bottom:8px}
 .model-note{margin:10px 0;background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--brand);border-radius:0 6px 6px 0;padding:10px 13px;font-size:.84rem;line-height:1.48;color:var(--ink)}
 .model-note b{color:var(--brandfg)}
 .model-note a{color:var(--brandfg)}
+/* Optional MATLAB teaching demo. The web version does not depend on MATLAB. */
+.matlab-option{margin:0;border:1px solid var(--line);border-radius:6px;padding:9px 13px;background:var(--panel);font-size:.87rem;line-height:1.5}
+.matlab-option a{color:var(--brandfg);font-weight:700;text-underline-offset:2px}
+.matlab-option code{font-family:var(--f-mono);font-size:.81rem}
 </style>
 </head>
 <body>
@@ -137,6 +141,11 @@ details.assume-wrap[open] summary{margin-bottom:8px}
     <p><b>Good for:</b> theoretical exploration of how winding, geometry, magnet properties, voltage, current control, gearing, and load affect motor performance. Voltage and current are model inputs, not limits of a particular driver.</p>
     <p><b>Not for:</b> rated power, safe stall duration, component selection, or predictions for a specific purchased motor. This idealized model omits important saturation, leakage, brush-contact, commutation, and temperature-coupled effects. Presets represent <i>approximate sizes and assumptions</i>, not calibrated products.</p>
   </div>
+
+  <aside class="matlab-option" role="note" aria-label="Optional MATLAB motor designer">
+    <strong>Optional MATLAB version:</strong> <a href="DCMotorDesignerMATLAB_v2.2.zip" download="DCMotorDesignerMATLAB_v2.2.zip">Download DC Motor Designer for MATLAB v2.2 (ZIP)</a>.
+    Extract the ZIP and run <code>DCMotorDesignerMATLAB</code> in base MATLAB. It is a separate interactive teaching model; the browser simulation above requires no MATLAB. An optional Simulink model generator is also included in the ZIP.
+  </aside>
 
   <div class="panel bar">
     <select id="preset" aria-label="Starting design">
