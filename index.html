@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="Frank C. Sup IV">
+<title>MIE 443 Interactive Simulators</title>
+<style>
+:root{--brand:#881C1C;--bg:#f2f2f2;--panel:#fff;--ink:#212121;--muted:#5c5c5c;--line:#d6d6d6;--brandfg:#881C1C}
+@media (prefers-color-scheme: dark){:root{--bg:#141414;--panel:#1f1f1f;--ink:#ececec;--muted:#a8a8a8;--line:#333;--brandfg:#e58a86}}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink);line-height:1.5}
+.brand{background:var(--brand);color:#fff}
+.bin,main{max-width:760px;margin:0 auto;padding-left:16px;padding-right:16px}
+.bin{padding-block:10px;display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 16px}
+.bin b{letter-spacing:.04em}
+main{padding-block:28px 40px}
+h1{font-size:1.6rem;margin:0 0 4px;padding-bottom:10px;border-bottom:3px solid var(--brand)}
+p{color:var(--muted);margin:10px 0 20px}
+a.card{display:block;background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--brand);border-radius:6px;padding:14px 16px;margin-bottom:10px;color:inherit;text-decoration:none}
+a.card:hover{border-color:var(--brand)}
+a.card b{display:block;font-size:1.05rem;color:var(--brandfg)}
+footer{margin-top:28px;font-size:.88rem;color:var(--muted);border-top:3px solid var(--brand);padding-top:12px}
+footer p{margin:0 0 6px}
+</style>
+</head>
+<body>
+<div class="brand"><div class="bin"><b>UMASS AMHERST</b><span>Mechanical and Industrial Engineering · MIE 443 Mechatronics</span></div></div>
+<main>
+<h1>Interactive Simulators</h1>
+<p>Each page runs entirely in your browser. Tap parts and parameters to explore <b>idealized teaching models</b>, their equations and assumptions.</p>
+<div style="border-left:4px solid var(--brand);border-radius:0 6px 6px 0;border-top:1px solid var(--line);border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:12px 14px;background:var(--panel);margin:12px 0 20px"><b>Educational use only.</b> Motor outputs are calculated predictions, not verified datasheet values, rated limits, or motor selection advice. Bus diagrams are conceptual, not tested electrical schematics or code. The motor examples are not manufacturer-calibrated. Review each page's model assumptions and the <a href="MODEL_NOTES.md">model and validation notes</a> before drawing quantitative or hardware-related conclusions.</div>
+<a class="card" href="motor.html"><b>DC Motor Designer</b>Change winding, geometry, magnets, gearing and load; see constants, curves and step response.</a>
+<a class="card" href="coreless.html"><b>Coreless DC Motor Designer</b>Idealized ironless architecture: magnet, winding shell and skew set the constants, inertia and heating.</a>
+<a class="card" href="brushless.html"><b>Brushless DC Motor Designer</b>Idealized slotless brushless architecture: poles, yoke iron loss, and block versus sinusoidal commutation.</a>
+<a class="card" href="i2c.html"><b>I²C Bus Inspector</b>Two Minimas and a 5 V logic-compatible LSM6DS3TR-C IMU breakout on I²C, one clock edge at a time.</a>
+<a class="card" href="spi.html"><b>SPI Bus Inspector</b>The same 5 V-compatible IMU breakout and two Minimas on SPI: chip selects, full duplex and contention.</a>
+<a class="card" href="uart.html"><b>UART / Serial Baud-Rate Inspector</b>Change the transmitter and receiver baud rates and watch the same 8N1 frame decode differently when sample clocks disagree.</a>
+<footer>
+<p><b>Author:</b> Frank C. Sup IV, Mechanical and Industrial Engineering, University of Massachusetts Amherst. October 2026.</p>
+<p><b>AI use disclosure:</b> Developed with assistance from Claude (Anthropic) and revised with assistance from ChatGPT (OpenAI), including AI-generated simulation code and draft explanations under the author's direction. The author is responsible for the content.</p>
+<p><b>Cite as:</b> Sup, F. C., IV. (2026). <i>MIE 443 interactive simulators</i> (October 2026 collection) [Interactive simulations]. University of Massachusetts Amherst.</p>
+</footer>
+</main>
+</body>
+</html>

@@ -1,0 +1,714 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="author" content="Frank C. Sup IV">
+<meta name="description" content="Teaching simulation for MIE 443 Mechatronics, UMass Amherst. Developed with assistance from Claude (Anthropic).">
+<title>I²C Bus Inspector</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+body{margin:0}
+[hidden]{display:none!important}
+img{max-width:100%}
+
+/* Layout: bench view. Controls, live "now" caption, schematic + inspector, scope trace, electrical knobs, code and register map side by side. */
+:root{
+  --bg:#e9edf1; --panel:#ffffff; --ink:#18212b; --muted:#5a6573; --line:#cdd5dd; --soft:#f3f6f8;
+  --scl:#b06d0f; --sda:#1d66b0; --ctrl:#6a4bc0; --peri:#0e8466; --imu:#b8336a; --warn:#c0362c; --ok:#1f7a3d;
+  --pcb:#17707c; --pcbink:#e8f6f7; --pcbedge:#0f5560; --imupcb:#2c3f73; --imuedge:#1e2c52;
+  --f-disp:"IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#11161c; --panel:#19212a; --ink:#e4e9ee; --muted:#9aa6b3; --line:#2e3946; --soft:#202a35;
+  --scl:#e3a23f; --sda:#5aa3ec; --ctrl:#a68cf0; --peri:#3fc59b; --imu:#f07aa8; --warn:#ff6b5e; --ok:#57c27a;
+  --pcb:#155e68; --pcbink:#e0f3f4; --pcbedge:#0c434b; --imupcb:#2a3b6c; --imuedge:#1b284b; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#11161c; --panel:#19212a; --ink:#e4e9ee; --muted:#9aa6b3; --line:#2e3946; --soft:#202a35;
+  --scl:#e3a23f; --sda:#5aa3ec; --ctrl:#a68cf0; --peri:#3fc59b; --imu:#f07aa8; --warn:#ff6b5e; --ok:#57c27a;
+  --pcb:#155e68; --pcbink:#e0f3f4; --pcbedge:#0c434b; --imupcb:#2a3b6c; --imuedge:#1b284b; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5}
+.wrap{max-width:1180px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 40px;display:flex;flex-direction:column;gap:14px}
+h1{font-family:var(--f-disp);font-weight:700;font-size:1.9rem;margin:0;letter-spacing:.01em;text-wrap:balance}
+h2{font-family:var(--f-disp);font-weight:600;font-size:.82rem;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin:0 0 8px}
+.sub{color:var(--muted);margin:2px 0 0;max-width:72ch}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;min-width:0}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button,select{font:inherit;font-size:.9rem;color:var(--ink);background:var(--soft);border:1px solid var(--line);border-radius:6px;padding:7px 12px;cursor:pointer;max-width:100%}
+button:hover,select:hover{border-color:var(--muted)}
+:focus-visible{outline:2px solid var(--sda);outline-offset:2px}
+button.primary{background:var(--ink);color:var(--panel);border-color:var(--ink);min-width:84px;font-weight:600}
+.spacer{flex:1}
+.tcount{font-family:var(--f-mono);font-size:.85rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.now{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;align-items:baseline}
+.now .tag{font-family:var(--f-mono);font-size:.78rem;padding:2px 8px;border-radius:4px;background:var(--soft);border:1px solid var(--line);white-space:nowrap}
+.now .ttl{font-family:var(--f-disp);font-weight:600;font-size:1.25rem}
+.now .note{grid-column:1/-1;margin:0;max-width:85ch}
+.now.warnstate{border-color:var(--warn)}
+.warnline{grid-column:1/-1;color:var(--warn);font-weight:600;margin:0}
+.grid2{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(0,1fr);gap:14px}
+@media (max-width:860px){.grid2{grid-template-columns:1fr}}
+.scroll{overflow-x:auto}
+#scene{width:100%;min-width:560px;display:block}
+#scene [data-k]{cursor:pointer}
+#scene [data-k]:hover .hl, #scene .hl.sel{stroke:var(--ink);stroke-width:2.5}
+.insp h3{font-family:var(--f-disp);font-size:1.15rem;margin:0 0 6px}
+.insp p{margin:0 0 8px}
+.insp .kv{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;font-family:var(--f-mono);font-size:.85rem;margin:8px 0;font-variant-numeric:tabular-nums}
+.insp .kv span:nth-child(odd){color:var(--muted)}
+.hint{color:var(--muted);font-size:.88rem}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:.82rem;color:var(--muted);margin-top:8px}
+.sw{display:inline-block;width:12px;height:12px;border-radius:2px;vertical-align:-1px;margin-right:5px}
+.decode{position:relative;height:30px;margin-left:46px}
+.blk{position:absolute;top:2px;height:24px;border-radius:4px;font-family:var(--f-mono);font-size:.72rem;display:flex;align-items:center;justify-content:center;cursor:pointer;border:1px solid transparent;overflow:hidden;white-space:nowrap;color:var(--ink)}
+.blk.se{background:color-mix(in srgb,var(--ink) 14%,transparent)}
+.blk.ad{background:color-mix(in srgb,var(--ctrl) 22%,transparent)}
+.blk.rw{background:color-mix(in srgb,var(--ctrl) 12%,transparent)}
+.blk.ak{background:color-mix(in srgb,var(--ok) 22%,transparent)}
+.blk.nk{background:color-mix(in srgb,var(--warn) 24%,transparent)}
+.blk.dt{background:color-mix(in srgb,var(--sda) 20%,transparent)}
+.blk.dp{background:color-mix(in srgb,var(--peri) 22%,transparent)}
+.blk.di{background:color-mix(in srgb,var(--imu) 22%,transparent)}
+.blk.on{border-color:var(--ink)}
+#wave{display:block;cursor:crosshair}
+.elec{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;align-items:end}
+.elec .readout{grid-column:1/-1}
+@media (max-width:760px){.elec{grid-template-columns:1fr 1fr}}
+.elec label{display:flex;flex-direction:column;gap:4px;font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.elec select{width:100%}
+.readout{font-family:var(--f-mono);font-size:.84rem;line-height:1.6;font-variant-numeric:tabular-nums}
+.pass{color:var(--ok);font-weight:600}.fail{color:var(--warn);font-weight:600}
+.code3{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr) minmax(0,.8fr);gap:14px}
+@media (max-width:980px){.code3{grid-template-columns:1fr}}
+.code{min-width:0}
+.code .hd{display:flex;align-items:center;gap:8px;font-family:var(--f-disp);font-weight:600;margin-bottom:6px}
+.dot{width:10px;height:10px;border-radius:50%}
+pre{margin:0;font-family:var(--f-mono);font-size:.76rem;line-height:1.55;background:var(--soft);border:1px solid var(--line);border-radius:6px;padding:8px 0;overflow-x:auto}
+pre .ln{display:block;padding:0 12px;white-space:pre;border-left:3px solid transparent}
+pre .ln.on{background:color-mix(in srgb,var(--scl) 18%,transparent);border-left-color:var(--scl)}
+pre .cm{color:var(--muted)}
+.cstat{font-size:.86rem;color:var(--muted);margin-top:6px;min-height:1.4em}
+table.rm{width:100%;border-collapse:collapse;font-family:var(--f-mono);font-size:.78rem;font-variant-numeric:tabular-nums}
+table.rm th{font-family:var(--f-disp);font-weight:600;color:var(--muted);text-align:left;padding:4px 6px;border-bottom:1px solid var(--line)}
+table.rm td{padding:5px 6px;border-bottom:1px solid var(--line)}
+table.rm tr.on td{background:color-mix(in srgb,var(--imu) 16%,transparent)}
+table.rm td.ptr{color:var(--imu);font-weight:600;width:1.5em}
+ol.try{margin:0;padding-left:1.3em;display:flex;flex-direction:column;gap:6px;max-width:90ch}
+@media (prefers-reduced-motion: reduce){.flow{animation:none!important}}
+@keyframes flow{to{stroke-dashoffset:-20}}
+.flow{animation:flow .6s linear infinite}
+
+/* UMass Amherst brand layer */
+:root{--brand:#881C1C; --onbrand:#ffffff; --brandfg:#881C1C; --brandtint:#f5e8e8}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--brandfg:#e58a86; --brandtint:#3a1f21}}
+:root[data-theme="dark"]{--brandfg:#e58a86; --brandtint:#3a1f21}
+.brand{background:var(--brand);color:var(--onbrand)}
+.brand .bin{max-width:1240px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:10px;display:flex;flex-wrap:wrap;gap:4px 16px;align-items:baseline;justify-content:space-between}
+.brand .u1{font-weight:700;letter-spacing:.04em;font-size:.95rem}
+.brand .u2{font-size:.85rem;opacity:.9}
+header{border-bottom:3px solid var(--brand);padding-bottom:10px}
+button.primary{background:var(--brand)!important;border-color:var(--brand)!important;color:var(--onbrand)!important}
+:focus-visible{outline-color:var(--brandfg)!important}
+.credit{border-top:3px solid var(--brand);padding-top:14px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:14px;font-size:.88rem;color:var(--muted)}
+@media (max-width:760px){.credit{grid-template-columns:1fr}}
+.credit h3{font-size:.8rem;text-transform:uppercase;letter-spacing:.08em;color:var(--brandfg);margin:0 0 4px}
+.credit p{margin:0 0 6px;max-width:75ch}
+.credit .cite{background:var(--brandtint);border-left:3px solid var(--brand);padding:8px 10px;border-radius:0 4px 4px 0;color:var(--ink);font-size:.85rem}
+
+.scope{border:1px solid var(--line);border-left:4px solid var(--brand);border-radius:0 6px 6px 0;background:var(--panel);padding:10px 14px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 18px;font-size:.9rem;max-width:100%}
+@media (max-width:700px){.scope{grid-template-columns:1fr}}
+.scope b{color:var(--brandfg)}
+.scope p{margin:0}
+details.assume-wrap summary{cursor:pointer;font-family:var(--f-disp);font-weight:600;font-size:.85rem;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}
+details.assume-wrap[open] summary{margin-bottom:8px}
+</style>
+</head>
+<body>
+
+<div class="brand"><div class="bin"><span class="u1">UMASS AMHERST</span><span class="u2">Mechanical and Industrial Engineering · MIE 443 Mechatronics</span></div></div>
+<div class="wrap">
+  <header>
+    <h1>I²C Bus Inspector</h1>
+    <p class="sub">A controller UNO R4 Minima shares one I²C bus with a second Minima (address 0x08) and an Adafruit LSM6DS3TR-C breakout (address 0x6A, with 5 V-safe level shifting). Step through a transaction one clock edge at a time. Tap any wire, resistor, pin driver, register, or board to see what it is doing right now.</p>
+  </header>
+
+  <div class="scope" role="note" aria-label="What this model is">
+    <p><b>Good for:</b> seeing the order of events on the wires, who drives each line, and what the code is doing while bits move.</p>
+    <p><b>Not for:</b> verifying real-board wiring, exact timing, rise/fall limits or library behavior. Voltage thresholds, driver impedances and line capacitances are illustrative; edges are first-order RC with no ringing/noise, byte gaps are shortened, and library/interrupt delays are omitted. Code panels are instructional examples, not tested production sketches.</p>
+  </div>
+
+  <div class="panel bar" role="toolbar" aria-label="Playback">
+    <select id="scn" aria-label="Transaction">
+      <option value="write">Write: send setpoint 42 to Minima 0x08</option>
+      <option value="read">Read: 2-byte encoder count from Minima 0x08</option>
+      <option value="imu">Read: IMU accel Z (register 0x2C, repeated START)</option>
+      <option value="fault">Fault: write to 0x09 (nobody home)</option>
+    </select>
+    <button id="back" title="Step back (←)">◀ Step</button>
+    <button id="play" class="primary" title="Play / pause (space)">Play</button>
+    <button id="fwd" title="Step forward (→)">Step ▶</button>
+    <button id="reset">Restart</button>
+    <select id="spd" aria-label="Playback speed">
+      <option value="1100">Slow</option>
+      <option value="550" selected>Medium</option>
+      <option value="200">Fast</option>
+    </select>
+    <span class="spacer"></span>
+    <span class="tcount" id="tcount"></span>
+  </div>
+
+  <div class="panel now" id="now" aria-live="polite"></div>
+
+  <div class="grid2">
+    <div class="panel">
+      <h2>Bench</h2>
+      <div class="scroll"><svg id="scene" viewBox="0 0 760 426" role="img" aria-label="Controller, second Minima and IMU wired by SDA, SCL and GND with pull-up resistors"></svg></div>
+      <div class="legend">
+        <span><span class="sw" style="background:var(--ctrl)"></span>Controller pulling low</span>
+        <span><span class="sw" style="background:var(--peri)"></span>Minima 0x08 pulling low</span>
+        <span><span class="sw" style="background:var(--imu)"></span>IMU pulling low</span>
+        <span>Faded wire = LOW. Moving dashes = current through pull-up.</span>
+      </div>
+    </div>
+    <div class="panel insp" id="insp"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Logic analyzer · analog view</h2>
+    <div class="scroll" id="scopewrap">
+      <div class="decode" id="decode"></div>
+      <canvas id="wave" height="170"></canvas>
+    </div>
+    <p class="hint" style="margin:6px 0 0">Tap the trace or a decoded block to jump there. Dashed lines are the input thresholds (V<sub>IL</sub> 1.5 V, V<sub>IH</sub> 3.5 V at 5 V supply). Ticks mark where receivers sample SDA.</p>
+  </div>
+
+  <div class="panel">
+    <h2>Electrical design</h2>
+    <p class="cap"><b>Interpretation:</b> This simplified analog trace is a teaching approximation, not a signal-integrity or device-speed qualification. Check the selected devices, actual pull-ups/loads, bus specification and oscilloscope measurements before hardware use.</p>
+    <div class="elec">
+      <label>Bus pull-up R<select id="selR">
+        <option value="1000">1 kΩ</option><option value="2200">2.2 kΩ</option>
+        <option value="4700" selected>4.7 kΩ</option><option value="10000">10 kΩ</option>
+        <option value="47000">47 kΩ</option><option value="0">None</option></select></label>
+      <label>IMU board pull-ups<select id="selRi">
+        <option value="0">None (hypothetical removal)</option><option value="10000" selected>10 kΩ (Adafruit board)</option>
+        <option value="4700">4.7 kΩ on board</option><option value="2200">2.2 kΩ on board</option></select></label>
+      <label>Bus capacitance<select id="selC">
+        <option value="50e-12">50 pF (short jumpers)</option><option value="200e-12" selected>200 pF</option>
+        <option value="400e-12">400 pF (spec max)</option></select></label>
+      <label>Clock<select id="selF">
+        <option value="100000" selected>100 kHz standard</option><option value="400000">400 kHz fast</option></select></label>
+      <div class="readout" id="readout"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>What the code and the IMU are doing</h2>
+    <div class="code3">
+      <div class="code"><div class="hd"><span class="dot" style="background:var(--ctrl)"></span>Controller sketch</div><pre id="cCode"></pre><div class="cstat" id="cStat"></div></div>
+      <div class="code"><div class="hd"><span class="dot" style="background:var(--peri)"></span>Minima peripheral sketch (0x08)</div><pre id="pCode"></pre><div class="cstat" id="pStat"></div></div>
+      <div class="code"><div class="hd"><span class="dot" style="background:var(--imu)"></span>IMU register map (excerpt)</div><table class="rm" id="rmap"></table><div class="cstat" id="iStat"></div></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Try this</h2>
+    <ol class="try">
+      <li>Pause on the 9th clock of the address byte in each scenario. Which device pulls SDA low, and what are the other two doing?</li>
+      <li>In the IMU read, find the repeated START. Why does the controller not send STOP after writing the register pointer?</li>
+      <li>Both the Minima and the IMU send the least-significant byte first. Find both reconstruction expressions and explain why the IMU needs a scale conversion to g.</li>
+      <li>The LSM6DS3TR-C breakout already has 10 kΩ pull-ups. With an additional 4.7 kΩ bus pull-up, calculate the parallel resistance. Change the assumed board pull-ups to investigate what happens if resistors are removed or added.</li>
+      <li>Set the bus pull-up to 47 kΩ with 400 pF. Compute τ = RC, then find the first bit a receiver could misread.</li>
+      <li>Run the fault case. Which line of code learns about the problem, and what value does it get?</li>
+    </ol>
+  </div>
+  <footer class="credit">
+    <div><h3>Author</h3><p><b>Frank C. Sup IV</b>, Professor, Mechanical and Industrial Engineering, University of Massachusetts Amherst</p><p>Version 1.4 · October 2026</p><h3 style="margin-top:10px">AI use disclosure</h3><p>Developed with assistance from Claude (Anthropic) and revised with assistance from ChatGPT (OpenAI), including AI-generated simulation code and draft explanations under the author's direction. The author is responsible for the content.</p></div>
+    <div><h3>How to cite</h3><p class="cite">Sup, F. C., IV. (2026). <i>I²C bus inspector</i> (Version 1.4) [Interactive simulation]. University of Massachusetts Amherst.</p><p>Add the page URL to the end of the citation once it is hosted.</p><p>This is a teaching model. It simplifies the physics on purpose and states its assumptions on the page. Check results against datasheets and measurements before using them for design.</p></div>
+  </footer>
+</div>
+
+<script>
+(function(){
+/* PROTOCOL SCOPE: event-by-event I2C teaching sequence with illustrative
+   register values and idealized participants. Analog line transitions use a
+   simplified pull-up/RC representation; library timing and real device state
+   machines are not reproduced. The Adafruit breakout, not the bare IMU IC,
+   provides 5 V logic-compatible bus connection in the reference example. */
+
+const $=id=>document.getElementById(id);
+const VDD=5, VIH=3.5, VIL=1.5, U=24, LM=46, NS=40;
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const DEV=['C','P','I'];
+const NAME={C:'Controller',P:'Minima 0x08',I:'IMU 0x6A'};
+const COL={C:'var(--ctrl)',P:'var(--peri)',I:'var(--imu)'};
+
+/* ---------- code listings ---------- */
+const C_CODE=[
+'#include <Wire.h>',
+'const uint8_t PERIPH = 0x08;   // second Minima',
+'const uint8_t IMU = 0x6A;      // Adafruit LSM6DS3TR-C breakout, SA0 low',
+'void setup() {',
+'  Wire.begin();                // controller: no address',
+'  Wire.beginTransmission(IMU); // auto-inc + block data update',
+'  Wire.write(0x12); Wire.write(0x44); // CTRL3_C: BDU + IF_INC',
+'  Wire.endTransmission();',
+'  Wire.beginTransmission(IMU); // enable 104 Hz, ±2 g accelerometer',
+'  Wire.write(0x10); Wire.write(0x40); // CTRL1_XL = 0x40',
+'  Wire.endTransmission();',
+'}',
+'void loop() {',
+'  // write: motor setpoint to Minima',
+'  Wire.beginTransmission(PERIPH); // only fills a buffer',
+'  Wire.write(42);                 // only fills a buffer',
+'  uint8_t err = Wire.endTransmission(); // bus traffic HERE',
+'  // read: encoder count from Minima',
+'  Wire.requestFrom(PERIPH, 2);    // bus traffic HERE',
+'  uint8_t lo = Wire.read();       // low byte arrives first',
+'  uint8_t hi = Wire.read();',
+'  int16_t count = (hi << 8) | lo;',
+'  // read: IMU accel Z',
+'  Wire.beginTransmission(IMU);',
+'  Wire.write(0x2C);               // OUTZ_L_XL: first register',
+'  Wire.endTransmission(false);    // false: no STOP, keep bus',
+'  Wire.requestFrom(IMU, 2);       // repeated START + read',
+'  uint8_t zl = Wire.read();       // low byte arrives first',
+'  uint8_t zh = Wire.read();',
+'  float az = (int16_t)((zh << 8) | zl) * 0.000061; // g, ±2 g',
+'  delay(100);',
+'}'];
+const P_CODE=[
+'#include <Wire.h>',
+'volatile uint8_t setpoint = 0;',
+'void onRx(int n) {           // called after STOP',
+'  setpoint = Wire.read();',
+'}',
+'void onReq() {               // called on read address',
+'  int16_t c = 500;           // 0x01F4',
+'  Wire.write((uint8_t*)&c, 2); // sends 0xF4, then 0x01',
+'}',
+'void setup() {',
+'  Wire.begin(0x08);          // join as peripheral 0x08',
+'  Wire.onReceive(onRx);',
+'  Wire.onRequest(onReq);',
+'}',
+'void loop() { /* motor control runs here */ }'];
+const RMAP=[['0x2C','OUTZ_L_XL','0x00'],['0x2D','OUTZ_H_XL','0x40'],['0x10','CTRL1_XL','0x40'],['0x12','CTRL3_C','0x44'],['0x0F','WHO_AM_I','0x6A']];
+function renderCode(el,lines,sub){
+  el.innerHTML=lines.map((t,i)=>{
+    let s=(sub&&sub[i])||t;
+    s=s.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    s=s.replace(/(\/\/.*|\/\*.*\*\/)$/,'<span class="cm">$1</span>');
+    return '<span class="ln" data-i="'+i+'">'+s+'</span>';}).join('');
+}
+
+/* ---------- transaction builder ---------- */
+function build(scn){
+  const ph=[], fr=[];
+  const blank=lab=>({lab,cells:Array(8).fill(''),cur:-1});
+  const reg={C:blank('shift register: idle'),P:blank('shift register: idle'),I:blank('shift register: idle')};
+  const st={C:'idle in loop()',P:'listening',I:'listening'};
+  let cl=13, pl=14, il=-1, ptr='0x2C';
+  const CL=(needle)=>C_CODE.findIndex(x=>x.includes(needle));
+  const snap=()=>{const r={};DEV.forEach(d=>r[d]={lab:reg[d].lab,cells:reg[d].cells.slice(),cur:reg[d].cur});return r;};
+  const push=o=>{ph.push(Object.assign({cl,pl,il,ptr,reg:snap(),st:Object.assign({},st)},o));};
+  const frame=(t,cls,lab)=>fr.push({t,cls,lab,b:ph.length});
+  const frameEnd=()=>{fr[fr.length-1].e=ph.length;};
+  const target = scn==='imu'?'I': scn==='fault'?null:'P';
+  const addr = scn==='imu'?0x6A: scn==='fault'?0x09:0x08;
+  const hx=v=>'0x'+v.toString(16).toUpperCase().padStart(2,'0');
+
+  cl = scn==='read'?CL('Wire.requestFrom(PERIPH'):scn==='imu'?CL('Wire.endTransmission(false)'):CL('Wire.beginTransmission(PERIPH');
+  const idleNote = scn==='read'?'The controller has just called Wire.requestFrom(). ':
+     scn==='imu'?'The controller called beginTransmission(IMU) and write(0x2C); those only filled a buffer. endTransmission(false) now starts the bus traffic. ':
+     'The controller already called beginTransmission() and write(); those only filled a buffer. Nothing touches the wires until endTransmission(). ';
+  push({scl:1,sda:1,drv:null,tag:'IDLE',title:'Bus idle',note:'Nobody is pulling either line low, so the pull-up resistors hold SDA and SCL HIGH. '+idleNote+'All three devices share these same two wires.'});
+  frame('START','se','S');
+  st.C='START';
+  push({scl:1,sda:0,drv:'C',tag:'START',title:'START condition',note:'The controller pulls SDA LOW while SCL is still HIGH. This is one of only two times SDA may change while SCL is HIGH. Both the Minima and the IMU wake up and get ready to compare the next byte with their own address.'});
+  frameEnd();
+
+  function sendByte(val,from,tos,kind,lab,cls){
+    const bits=[];for(let i=7;i>=0;i--)bits.push((val>>i)&1);
+    reg[from].lab='TX shift register'; reg[from].cells=bits.map(String);
+    tos.forEach(t=>{reg[t].lab='RX shift register'; reg[t].cells=Array(8).fill('');});
+    for(let k=0;k<8;k++){
+      const b=bits[k]; let nm, fld;
+      if(kind==='addr'){ if(k<7){nm='A'+(6-k);fld='address';} else {nm='R/W';fld='read/write';} } else {nm='D'+(7-k);fld='data';}
+      if(kind==='addr'&&k===0) frame('ADDR','ad','addr '+hx(addr));
+      if(kind==='addr'&&k===7) frame('RW','rw',b?'R':'W');
+      if(kind!=='addr'&&k===0) frame('DATA',cls,lab);
+      reg[from].cur=k; tos.forEach(t=>reg[t].cur=k);
+      st[from]=kind==='addr'?'sending address':'sending data';
+      tos.forEach(t=>st[t]=kind==='addr'?'comparing address':'receiving');
+      const why = kind==='addr'&&k===7 ? (b?' 1 means the controller wants to read.':' 0 means the controller will write.') : '';
+      push({scl:0,sda:b,drv:b?null:from,tag:nm,title:NAME[from]+' sets '+nm+' = '+b,
+        note:'SCL is LOW, so SDA is allowed to change. '+(b?'The '+NAME[from]+' releases SDA and the pull-up brings it HIGH.':'The '+NAME[from]+' turns on its pull-down transistor and SDA goes LOW.')+' This is '+fld+' bit '+nm+'.'+why});
+      tos.forEach(t=>reg[t].cells[k]=String(b));
+      const who = tos.length>1?'Every other device on the bus':'The '+NAME[tos[0]];
+      push({scl:1,sda:b,drv:b?null:from,sample:true,tag:nm,title:'Clock rises: SDA = '+b+' is sampled',
+        note:'The controller releases SCL and the pull-up raises it. '+who+' reads SDA on this rising edge and shifts '+b+' into its RX register ('+(k+1)+' of 8). SDA must not change until SCL is LOW again.'});
+      if(kind==='addr'&&k===6) frameEnd();
+      if(k===7) frameEnd();
+    }
+    reg[from].cur=-1; tos.forEach(t=>reg[t].cur=-1);
+  }
+  function ack(by,from,ok,ctx){
+    frame('ACK',ok?'ak':'nk',ok?'ACK':'NACK');
+    st[from]='waiting for ACK';
+    if(by) st[by]=ok?'sending ACK':'sending NACK';
+    let n1,n2;
+    if(ctx==='addrNobody'){
+      n1='Ninth clock. The controller releases SDA and waits. The Minima is 0x08 and the IMU is 0x6A. Neither matches 0x09, so nobody pulls SDA low.';
+      n2='SDA is still HIGH on the rising edge: NACK. The controller gives up and sends STOP. endTransmission() will return 2 (NACK on address).';
+    } else if(ctx==='lastRead'){
+      n1='Ninth clock after the last byte. The '+NAME[from]+' releases SDA and the controller deliberately does not pull it low.';
+      n2='SDA is HIGH: a NACK from the controller. Here NACK is normal. It tells the '+NAME[from]+' "that was the last byte, stop driving SDA."';
+    } else if(ctx==='addr'){
+      const other=DEV.filter(d=>d!=='C'&&d!==by)[0];
+      n1='Ninth clock. The controller releases SDA. The '+NAME[by]+' matched its address and pulls SDA LOW. The '+NAME[other]+' did not match and stays silent until the next START.';
+      n2='SDA is LOW on the rising edge: ACK, meaning "that address is me, keep going."';
+    } else {
+      n1='Ninth clock. The '+NAME[from]+' releases SDA so the receiver can answer. The '+NAME[by]+' pulls SDA LOW.';
+      n2='SDA is LOW on the rising edge: ACK, meaning "byte received."';
+    }
+    push({scl:0,sda:ok?0:1,drv:ok?by:null,tag:ok?'ACK':'NACK',title:'9th clock: '+(ok?NAME[by]+' acknowledges':(ctx==='lastRead'?'controller does not acknowledge':'nobody pulls SDA low')),note:n1});
+    push({scl:1,sda:ok?0:1,drv:ok?by:null,sample:true,tag:ok?'ACK':'NACK',title:(ok?'ACK':'NACK')+' sampled',note:n2});
+    frameEnd();
+  }
+  function ignoreOthers(keep){
+    DEV.forEach(d=>{ if(d!=='C'&&d!==keep){ reg[d]=blank('shift register: idle'); st[d]='not me: ignoring'; } });
+  }
+  function stop(note2){
+    frame('STOP','se','P');
+    st.C='sending STOP';
+    push({scl:0,sda:0,drv:'C',tag:'STOP',title:'Prepare STOP',note:'With SCL LOW, the controller pulls SDA LOW so it can make a clean rising edge on SDA next.'});
+    push({scl:1,sda:0,drv:'C',tag:'STOP',title:'Release SCL',note:'SCL rises first. SDA is still held LOW.'});
+    push({scl:1,sda:1,drv:null,tag:'STOP',title:'STOP condition',note:note2});
+    frameEnd();
+  }
+  function rstart(){
+    frame('Sr','se','Sr');
+    st.C='repeated START';
+    push({scl:0,sda:1,drv:null,tag:'Sr',title:'Release SDA, SCL still LOW',note:'The controller skipped the STOP. It lets SDA go HIGH while SCL is LOW, setting up for a new START.'});
+    push({scl:1,sda:1,drv:null,tag:'Sr',title:'Release SCL',note:'Both lines HIGH, but the bus is not free: the controller still owns it because it never sent STOP.'});
+    push({scl:1,sda:0,drv:'C',tag:'Sr',title:'Repeated START',note:'SDA falls while SCL is HIGH: a START without a STOP before it. The controller keeps the bus and can turn around to read from the register it just pointed at. No other controller can grab the bus in between.'});
+    frameEnd();
+  }
+
+  if(scn==='write'||scn==='fault'){
+    sendByte((addr<<1)|0,'C',['P','I'],'addr');
+    if(scn==='write'){
+      ignoreOthers('P'); st.P='address match';
+      ack('P','C',true,'addr');
+      st.C='address ACKed';
+      sendByte(42,'C',['P'],'data','data 0x2A','dt');
+      st.P='byte → Wire buffer';
+      ack('P','C',true,'data');
+      st.P='waiting for STOP';
+      stop('SDA rises while SCL is HIGH: STOP. The bus is free. Only now does the Minima\'s Wire library call onRx(), which copies 42 into setpoint. On the controller, endTransmission() returns err = 0.');
+      const L=ph[ph.length-1]; L.pl=3; L.st.P='onRx() runs'; L.st.C='err = 0';
+    } else {
+      DEV.forEach(d=>{if(d!=='C') st[d]='no match';});
+      ack(null,'C',false,'addrNobody');
+      ignoreOthers(null);
+      stop('STOP. No data byte was ever sent. endTransmission() returns err = 2. If the code never checks err, the setpoint is silently lost and the motor keeps its old command.');
+      const L=ph[ph.length-1]; L.st.C='err = 2';
+    }
+  } else if(scn==='read'){
+    sendByte((addr<<1)|1,'C',['P','I'],'addr');
+    ignoreOthers('P'); st.P='address match, R';
+    ack('P','C',true,'addr');
+    pl=7; ph[ph.length-1].pl=7; st.P='onReq() filled TX';
+    ph[ph.length-1].note+=' Because R/W = 1, the Minima\'s Wire library calls onReq() right now, which loads 0xF4 and 0x01 into its transmit buffer.';
+    sendByte(0xF4,'P',['C'],'data','0xF4 (lo)','dp');
+    st.C='byte 1 → buffer';
+    ack('C','P',true,'data');
+    sendByte(0x01,'P',['C'],'data','0x01 (hi)','dp');
+    st.C='byte 2 → buffer';
+    ack(null,'P',false,'lastRead');
+    pl=14;
+    stop('STOP. requestFrom() returns 2 (bytes received). The two Wire.read() calls that follow only copy bytes out of the controller\'s local buffer: lo = 0xF4, hi = 0x01, so count = 0x01F4 = 500.');
+    const L=ph[ph.length-1]; L.cl=CL('int16_t count'); L.st.C='count = 500'; L.st.P='done';
+  } else {
+    // IMU register read: write pointer, repeated START, read 2 bytes
+    sendByte((addr<<1)|0,'C',['P','I'],'addr');
+    ignoreOthers('I'); st.I='address match, W';
+    ack('I','C',true,'addr');
+    sendByte(0x2C,'C',['I'],'data','ptr 0x2C','dt');
+    st.I='pointer = 0x2C';
+    il=0; ptr='0x2C';
+    ack('I','C',true,'data');
+    ph[ph.length-1].note+=' The IMU does not store 0x2C as data. The first byte after the write address is the register pointer: "the next read starts at 0x2C, OUTZ_L_XL."';
+    cl=CL('Wire.requestFrom(IMU');
+    rstart();
+    reg.P=blank('shift register: idle'); reg.I=blank('shift register: idle');
+    sendByte((addr<<1)|1,'C',['P','I'],'addr');
+    ignoreOthers('I'); st.I='address match, R';
+    ack('I','C',true,'addr');
+    sendByte(0x00,'I',['C'],'data','0x00 (lo)','di');
+    ph.slice(-16).forEach(p=>p.il=0);
+    st.C='byte 1 → buffer';
+    il=1; ptr='0x2D';
+    ack('C','I',true,'data');
+    ph[ph.length-1].note+=' The IMU auto-increments its pointer to 0x2D so the next byte is OUTZ_H_XL.';
+    sendByte(0x40,'I',['C'],'data','0x40 (hi)','di');
+    st.C='byte 2 → buffer';
+    ack(null,'I',false,'lastRead');
+    stop('STOP. Two bytes arrived LOW byte first: zl = 0x00, zh = 0x40. (zh << 8) | zl = 0x4000 = 16384 counts; at 0.061 mg/LSB this is approximately 1.00 g in the ±2 g range.');
+    const L=ph[ph.length-1]; L.cl=CL('float az'); L.st.C='az = 1.00 g'; L.st.I='done'; L.il=-1;
+  }
+  return {ph,fr,addr};
+}
+
+/* ---------- electrical simulation ---------- */
+let S={scn:'write',i:0,playing:false,timer:null,sel:null,R:4700,Ri:10000,C:200e-12,F:100000};
+let T, V;
+const par=(a,b)=> a>0&&b>0 ? a*b/(a+b) : (a>0?a:b);
+function Reff(){return par(S.R,S.Ri);}
+function simulate(){
+  const ph=T.ph, half=1/(2*S.F), dt=half/NS, R=Reff();
+  const tau = R>0 ? R*S.C : 1e3, tauF=25*S.C;
+  let vs = R>0?VDD:0.2, vc = R>0?VDD:0.2;
+  const sda=new Float32Array(ph.length*NS), scl=new Float32Array(ph.length*NS);
+  const stepv=(v,low)=>low? v+(0-v)*(1-Math.exp(-dt/tauF)) : v+(VDD-v)*(1-Math.exp(-dt/tau));
+  for(let k=0;k<ph.length;k++){ const p=ph[k], q=ph[k-1]||p;
+    // SDA changes a little after the SCL edge (hold time), or mid-phase for START/STOP, so the order of edges is visible
+    const dly = (p.scl===0&&q.scl===1)? Math.round(NS*0.3) : (p.scl===1&&q.scl===1&&!!p.drv!==!!q.drv)? Math.round(NS*0.5) : 0;
+    for(let j=0;j<NS;j++){ vs=stepv(vs, j<dly? !!q.drv : !!p.drv); vc=stepv(vc,p.scl===0); sda[k*NS+j]=vs; scl[k*NS+j]=vc; } }
+  const warn=ph.map((p,k)=>{
+    if(!p.sample) return null; const m=k*NS+(NS>>1);
+    if(scl[m]<VIH) return 'SCL has not reached VIH (3.5 V) by mid-pulse. Receivers may miss this clock edge entirely.';
+    if(p.sda===1 && sda[m]<VIH) return 'SDA should be 1 but is only '+sda[m].toFixed(1)+' V at the sample point. A receiver may read this bit as 0.';
+    return null; });
+  V={sda,scl,warn,tau,half,R};
+}
+
+/* ---------- scene ---------- */
+const svg=$('scene');
+function zig(x,y0,y1){let d='M'+x+' '+y0;const n=6,h=(y1-y0)/n;for(let i=0;i<n;i++){d+=' L'+(x+(i%2?-8:8))+' '+(y0+h*(i+.5));}d+=' L'+x+' '+y1;return d;}
+function vhop(x,y0,y1,hops){let d='M'+x+' '+y0;hops.forEach(h=>{d+=' V'+(h-6)+' A6 6 0 0 1 '+x+' '+(h+6);});return d+' V'+y1;}
+const t=(x,y,s,o={})=>'<text x="'+x+'" y="'+y+'" font-family="'+(o.f||'var(--f-mono)')+'" font-size="'+(o.s||11)+'"'+(o.w?' font-weight="'+o.w+'"':'')+(o.a?' text-anchor="'+o.a+'"':'')+' fill="'+(o.c||'var(--pcbink)')+'"'+(o.id?' id="'+o.id+'"':'')+(o.op?' opacity="'+o.op+'"':'')+'>'+s+'</text>';
+function cells(w,x0,y){let h='';for(let k=0;k<8;k++)h+='<rect id="rc'+w+k+'" x="'+(x0+k*21)+'" y="'+y+'" width="19" height="22" rx="2" fill="var(--pcbedge)" stroke="var(--pcbink)" stroke-opacity=".35"/>'+t(x0+9.5+k*21,y+16,'',{id:'rt'+w+k,a:'middle',s:13});return h;}
+function odbox(w,line,x,y){return '<g data-k="'+w+'od'+line+'" tabindex="0"><rect id="od'+w+line+'" x="'+x+'" y="'+y+'" width="26" height="16" rx="3" fill="var(--pcbedge)" stroke="var(--pcbink)" stroke-opacity=".5"/>'+t(x+13,y+12,'off',{id:'ot'+w+line,a:'middle',s:10})+'</g>';}
+function board(w,x,t1,t2){
+  const right=w==='C', px=right?x+210:x, odx=right?x+168:x+16;
+  return '<g data-k="'+w+'" tabindex="0"><rect class="hl" x="'+x+'" y="100" width="210" height="196" rx="10" fill="var(--pcb)" stroke="var(--pcbedge)" stroke-width="2"/>'+
+    t(x+16,124,t1,{f:'var(--f-disp)',s:15,w:700})+t(x+16,140,t2,{s:11,op:.8})+t(x+16,284,'',{id:'st'+w,s:12})+'</g>'+
+    '<g data-k="'+w+'reg" tabindex="0">'+t(x+22,210,'',{id:'rl'+w,s:10.5,op:.85})+cells(w,x+22,216)+'</g>'+
+    odbox(w,'Sda',odx,142)+odbox(w,'Scl',odx,187)+
+    '<path d="M'+(right?odx+26:px)+' 150 H'+(right?px:odx)+'" stroke="var(--pcbink)" stroke-width="2"/><path d="M'+(right?odx+26:px)+' 195 H'+(right?px:odx)+'" stroke="var(--pcbink)" stroke-width="2"/>'+
+    '<rect x="'+(px-5)+'" y="143" width="10" height="14" fill="var(--ink)"/><rect x="'+(px-5)+'" y="188" width="10" height="14" fill="var(--ink)"/><rect x="'+(px-5)+'" y="251" width="10" height="14" fill="var(--ink)"/>'+
+    t(right?px-12:px+12,263,'GND',{a:right?'end':'start',s:10,op:.8});
+}
+function imuBoard(){
+  const x=280,y=318,w=220,h=100;
+  return '<g data-k="I" tabindex="0"><rect class="hl" x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="8" fill="var(--imupcb)" stroke="var(--imuedge)" stroke-width="2"/>'+
+    t(x+12,y+18,'IMU · LSM6DS3TR-C',{f:'var(--f-disp)',s:14,w:700})+t(x+w-10,y+18,'0x6A',{a:'end',s:11,op:.85})+
+    t(x+w-10,y+34,'',{id:'imuPU',a:'end',s:10,op:.8})+
+    t(x+12,y+93,'',{id:'stI',s:11.5})+'</g>'+
+    odbox('I','Sda',287,y+26)+odbox('I','Scl',357,y+26)+
+    '<g data-k="Ireg" tabindex="0">'+t(x+12,y+56,'',{id:'rlI',s:10.5,op:.85})+cells('I',x+12,y+60)+t(x+w-10,y+56,'',{id:'ptrI',a:'end',s:10.5,c:'var(--pcbink)'})+'</g>'+
+    '<rect x="295" y="'+(y-5)+'" width="10" height="10" fill="var(--ink)"/><rect x="365" y="'+(y-5)+'" width="10" height="10" fill="var(--ink)"/><rect x="435" y="'+(y-5)+'" width="10" height="10" fill="var(--ink)"/>';
+}
+function drawScene(){
+  svg.innerHTML=
+  '<g data-k="rail" tabindex="0"><path class="hl" d="M125 100 V36 H640" fill="none" stroke="var(--ink)" stroke-width="3"/>'+t(133,28,'5 V',{s:13,c:'var(--ink)'})+'</g>'+
+  '<g data-k="rpSda" tabindex="0"><path d="M330 36 V62" stroke="var(--sda)" stroke-width="3" fill="none"/><path class="hl" d="'+zig(330,62,108)+'" stroke="var(--ink)" stroke-width="2" fill="none"/>'+
+    '<path id="puSda" d="M330 108 V150" stroke="var(--sda)" stroke-width="3" fill="none"/><path id="flSda" d="M330 40 V148" stroke="var(--sda)" stroke-width="3" stroke-dasharray="4 6" fill="none" opacity="0"/>'+
+    '<rect x="312" y="56" width="36" height="58" fill="transparent"/>'+t(292,90,'4.7k',{a:'end',s:12,c:'var(--muted)',id:'rLab1'})+'</g>'+
+  '<g data-k="rpScl" tabindex="0"><path d="M430 36 V62" stroke="var(--scl)" stroke-width="3" fill="none"/><path class="hl" d="'+zig(430,62,108)+'" stroke="var(--ink)" stroke-width="2" fill="none"/>'+
+    '<path id="puScl" d="'+vhop(430,108,195,[150])+'" stroke="var(--scl)" stroke-width="3" fill="none"/><path id="flScl" d="'+vhop(430,40,193,[150])+'" stroke="var(--scl)" stroke-width="3" stroke-dasharray="4 6" fill="none" opacity="0"/>'+
+    '<rect x="412" y="56" width="36" height="58" fill="transparent"/>'+t(448,90,'4.7k',{s:12,c:'var(--muted)',id:'rLab2'})+'</g>'+
+  '<circle cx="330" cy="36" r="4" fill="var(--ink)"/><circle cx="430" cy="36" r="4" fill="var(--ink)"/><circle cx="330" cy="150" r="4" fill="var(--sda)"/><circle cx="430" cy="195" r="4" fill="var(--scl)"/>'+
+  '<g data-k="sda" tabindex="0"><path class="wSda" d="M230 150 H530" stroke="var(--sda)" stroke-width="6" fill="none"/><path class="wSda" d="'+vhop(300,150,318,[195,258])+'" stroke="var(--sda)" stroke-width="5" fill="none"/>'+
+    '<circle cx="300" cy="150" r="4" fill="var(--sda)"/><rect x="230" y="136" width="300" height="28" fill="transparent"/>'+
+    t(375,141,'',{id:'tSda',a:'middle',s:12,w:600,c:'var(--sda)'})+t(240,141,'SDA · A4',{f:'var(--f-disp)',s:13,w:600,c:'var(--sda)'})+'</g>'+
+  '<g data-k="scl" tabindex="0"><path class="wScl" d="M230 195 H530" stroke="var(--scl)" stroke-width="6" fill="none"/><path class="wScl" d="'+vhop(370,195,318,[258])+'" stroke="var(--scl)" stroke-width="5" fill="none"/>'+
+    '<circle cx="370" cy="195" r="4" fill="var(--scl)"/><rect x="230" y="181" width="300" height="28" fill="transparent"/>'+
+    t(485,186,'',{id:'tScl',a:'middle',s:12,w:600,c:'var(--scl)'})+t(240,186,'SCL · A5',{f:'var(--f-disp)',s:13,w:600,c:'var(--scl)'})+'</g>'+
+  '<g data-k="gnd" tabindex="0"><path class="hl" d="M230 258 H530 M440 258 V318" stroke="var(--muted)" stroke-width="4" fill="none"/><circle cx="440" cy="258" r="4" fill="var(--muted)"/>'+
+    '<rect x="230" y="246" width="300" height="24" fill="transparent"/>'+t(462,251,'GND',{f:'var(--f-disp)',s:13,w:600,c:'var(--muted)'})+'</g>'+
+  board('C',20,'CONTROLLER','UNO R4 Minima')+board('P',530,'MINIMA 0x08','UNO R4 Minima, peripheral')+imuBoard();
+  svg.querySelectorAll('[data-k]').forEach(g=>{
+    g.addEventListener('click',e=>{e.stopPropagation();select(g.dataset.k);});
+    g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();select(g.dataset.k);}});
+  });
+}
+const lvl=v=> v>=VIH?'HIGH': v<=VIL?'LOW':'UNDEFINED';
+function updScene(){
+  const p=T.ph[S.i], e=S.i*NS+NS-1, vs=V.sda[e], vc=V.scl[e];
+  const set=(el,a)=>{for(const k in a)el.setAttribute(k,a[k]);};
+  const wire=(cls,v,col)=>{const L=lvl(v);svg.querySelectorAll('.'+cls).forEach(el=>set(el,{opacity:L==='HIGH'?1:L==='LOW'?.3:.8,'stroke-dasharray':L==='UNDEFINED'?'8 6':'none',stroke:L==='UNDEFINED'?'var(--warn)':col}));};
+  wire('wSda',vs,'var(--sda)'); wire('wScl',vc,'var(--scl)');
+  $('tSda').textContent=lvl(vs)+'  '+vs.toFixed(1)+' V'; $('tScl').textContent=lvl(vc)+'  '+vc.toFixed(1)+' V';
+  const pu=S.R>0;
+  set($('flSda'),{opacity:(pu&&p.drv)?1:0,class:(pu&&p.drv)?'flow':''});
+  set($('flScl'),{opacity:(pu&&p.scl===0)?1:0,class:(pu&&p.scl===0)?'flow':''});
+  ['puSda','puScl'].forEach(id=>set($(id),{opacity:pu?1:.15}));
+  const rl=pu?(S.R/1000)+'k':'none'; $('rLab1').textContent=rl; $('rLab2').textContent=rl;
+  $('imuPU').textContent=S.Ri>0?'board pull-ups '+(S.Ri/1000)+'k':'no board pull-ups';
+  DEV.forEach(w=>{
+    const r=p.reg[w];
+    $('rl'+w).textContent=r.lab;
+    for(let k=0;k<8;k++){ $('rt'+w+k).textContent=r.cells[k]; set($('rc'+w+k),{fill:k===r.cur?COL[w]:(w==='I'?'var(--imuedge)':'var(--pcbedge)')}); }
+    $('st'+w).textContent=p.st[w];
+    const onS=p.drv===w, onC=(w==='C'&&p.scl===0);
+    const base=w==='I'?'var(--imuedge)':'var(--pcbedge)';
+    set($('od'+w+'Sda'),{fill:onS?COL[w]:base}); $('ot'+w+'Sda').textContent=onS?'ON':'off';
+    set($('od'+w+'Scl'),{fill:onC?COL[w]:base}); $('ot'+w+'Scl').textContent=onC?'ON':'off';
+  });
+  $('ptrI').textContent='ptr '+p.ptr;
+  svg.querySelectorAll('.hl').forEach(h=>h.classList.remove('sel'));
+  if(S.sel){const g=svg.querySelector('[data-k="'+S.sel+'"] .hl');if(g)g.classList.add('sel');}
+}
+
+/* ---------- inspector ---------- */
+function inspector(){
+  const p=T.ph[S.i], e=S.i*NS+NS-1, vs=V.sda[e], vc=V.scl[e];
+  const R=V.R, Rt=R>0?(R/1000).toFixed(2)+' kΩ':'none';
+  const iLow=R>0?(VDD/R*1000).toFixed(2)+' mA':'0 mA';
+  const kv=a=>'<div class="kv">'+a.map(([k,v])=>'<span>'+k+'</span><span>'+v+'</span>').join('')+'</div>';
+  const drvName=d=>d?NAME[d]:'nobody (released)';
+  const k=S.sel; let h;
+  if(!k) h='<h3>Inspector</h3><p>Pause anywhere, then tap a wire, pull-up resistor, pin driver box, shift register, or board. The details update as you step, so you can watch the same wire change state.</p><p class="hint">Keyboard: space plays or pauses, arrow keys step.</p>';
+  else if(k==='sda'||k==='scl'){
+    const isS=k==='sda', v=isS?vs:vc, d=isS?p.drv:(p.scl===0?'C':null);
+    h='<h3>'+(isS?'SDA, serial data':'SCL, serial clock')+'</h3>'+kv([['level',lvl(v)],['voltage',v.toFixed(2)+' V'],['pulled low by',drvName(d)],['pull-up current',d&&R>0?iLow:'≈ 0']])+
+      (isS?'<p>One wire, three devices. Any of them may pull it low, but the protocol makes sure only one does at a time: the sender during data bits, the receiver during the 9th (ACK) bit.</p>':'<p>Only the controller generates the clock. A peripheral may hold SCL low to make the controller wait (clock stretching), but this demo does not use it.</p>')+
+      '<p>The line is <b>open-drain</b>. A device can pull it to ground or let go. No device ever drives it HIGH; the pull-up resistor does. So two devices can never fight: the worst case is both pulling low, which is safe. Each extra device also adds pin capacitance to the bus.</p>';
+  }
+  else if(k==='rpSda'||k==='rpScl'){
+    const isS=k==='rpSda', low=isS?!!p.drv:p.scl===0;
+    h='<h3>Pull-up resistor ('+(isS?'SDA':'SCL')+')</h3>'+kv([['bus resistor',S.R>0?(S.R/1000)+' kΩ':'none'],['IMU board',S.Ri>0?(S.Ri/1000)+' kΩ in parallel':'none'],['effective R',Rt],['bus C',(S.C*1e12)+' pF'],['τ = RC',R>0?(V.tau*1e6).toFixed(2)+' µs':'∞'],['current now',low&&R>0?iLow+' into the driver':'≈ 0 (line high)']])+
+      '<p>When nobody pulls low, the pull-ups charge the wire and pin capacitance toward 5 V: a first-order RC step response. Smaller R rises faster but makes every pull-down transistor sink more current.</p><p class="hint">The Adafruit LSM6DS3TR-C breakout includes 10 kΩ external-side pull-ups. Additional bus resistors appear in parallel; the adjustable board value is a what-if experiment, not a configurable board feature.</p>';
+  }
+  else if(k==='gnd') h='<h3>Shared ground</h3><p>HIGH and LOW are voltages measured against ground. All three boards must share GND, or a LOW on one is not a LOW on another, and the bus fails in confusing, intermittent ways. Every I²C connection is three wires minimum: SDA, SCL, GND.</p>';
+  else if(k==='rail') h='<h3>5 V supply rail</h3><p>The pull-ups connect here, so a HIGH means about 5 V. The R4 Minima runs its I/O at 5 V. The Adafruit LSM6DS3TR-C breakout has an onboard 3.3 V regulator and bidirectional I²C level shifting, so its VIN and external SCL/SDA pins can be used with 5 V logic. This is a property of the breakout board, NOT the bare sensor chip.</p>';
+  else if(k==='C') h='<h3>Controller board</h3>'+kv([['role','starts/stops every transfer, makes the clock'],['state',p.st.C],['code line',(p.cl+1)]])+'<p>The RA4M1 chip has a dedicated I²C hardware block. Your sketch never toggles these pins bit by bit. endTransmission() and requestFrom() hand bytes to the hardware and block until the transaction finishes, about 0.1 ms per byte at 100 kHz.</p>';
+  else if(k==='P') h='<h3>Minima peripheral</h3>'+kv([['address','0x08 (set by Wire.begin(0x08))'],['state',p.st.P]])+'<p>Its I²C hardware compares every address on the bus with its own and only responds to 0x08. Its loop() keeps running during a transfer. The Wire library interrupts it to call onRx() after a write finishes, or onReq() when the controller asks to read.</p><p>Keep those callbacks short. Long work inside them delays your control loop.</p>';
+  else if(k==='I') h='<h3>IMU (LSM6DS3TR-C breakout)</h3>'+kv([['address','0x6A (SA0 low; 0x6B if high)'],['state',p.st.I],['register pointer',p.ptr]])+'<p>The IMU is not running a sketch. It is a fixed state machine with a <b>register map</b>. Writing one byte after its address sets the register pointer. Reading then returns that register and auto-increments, so one read gets OUTZ_L_XL then OUTZ_H_XL (low byte first).</p><p>Its accelerometer starts powered down. setup() sets CTRL3_C = 0x44 for block-data update and auto-increment, then CTRL1_XL = 0x40 for 104 Hz at ±2 g. The example 0x4000 is approximately 1 g.</p>';
+  else if(/reg$/.test(k)){
+    const w=k[0], r=p.reg[w];
+    h='<h3>'+NAME[w]+' shift register</h3>'+kv([['mode',r.lab],['contents',r.cells.map(c=>c||'·').join(' ')],['current bit',r.cur>=0?(r.cur+1)+' of 8':'none']])+'<p>Bytes go out most significant bit first. The sender shifts one bit onto SDA per clock; each receiver shifts one bit in on each rising SCL edge. During an address byte every device fills its register and compares; after that only the addressed device keeps listening.</p>';
+  }
+  else if(/od(Sda|Scl)$/.test(k)){
+    const w=k[0], isS=/Sda/.test(k), on=isS?p.drv===w:(w==='C'&&p.scl===0);
+    h='<h3>'+NAME[w]+' '+(isS?'SDA':'SCL')+' pull-down</h3>'+kv([['transistor',on?'ON, sinking current':'OFF, high impedance'],['current',on&&R>0?iLow:'≈ 0']])+'<p>Each I²C pin is an open-drain output: a transistor to ground. ON pulls the line LOW. OFF lets the pull-up take it HIGH. The spec limits sink current to 3 mA in standard mode, which sets the smallest allowed pull-up.</p>'+(w!=='C'&&!isS?'<p class="hint">Peripherals only turn this on to stretch the clock. Not used here.</p>':'');
+  }
+  $('insp').innerHTML=h;
+}
+function select(k){S.sel=(S.sel===k)?null:k;updScene();inspector();}
+svg.addEventListener('click',()=>{S.sel=null;updScene();inspector();});
+
+/* ---------- now caption ---------- */
+function updNow(){
+  const p=T.ph[S.i], w=V.warn[S.i], half=V.half*1e6;
+  $('now').className='panel now'+(w?' warnstate':'');
+  $('now').innerHTML='<span class="tag">'+p.tag+'</span><span class="ttl">'+p.title+'</span><p class="note">'+p.note+'</p>'+(w?'<p class="warnline">⚠ '+w+'</p>':'');
+  $('tcount').textContent='step '+(S.i+1)+'/'+T.ph.length+' · t = '+(S.i*half).toFixed(S.F>2e5?2:1)+' µs';
+}
+
+/* ---------- waveform ---------- */
+const cv=$('wave');
+function drawWave(){
+  const n=T.ph.length, W=LM+n*U+10, H=170, dpr=window.devicePixelRatio||1;
+  cv.width=W*dpr; cv.height=H*dpr; cv.style.width=W+'px'; cv.style.height=H+'px';
+  const g=cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W,H);
+  const rows=[{nm:'SCL',a:V.scl,base:70,col:css('--scl')},{nm:'SDA',a:V.sda,base:150,col:css('--sda')}], hh=55;
+  const mut=css('--muted'), line=css('--line'), ink=css('--ink'), warnc=css('--warn');
+  g.font='600 12px '+css('--f-disp');
+  for(const r of rows){
+    g.fillStyle=r.col; g.fillText(r.nm,6,r.base-hh/2+4);
+    g.strokeStyle=line; g.setLineDash([3,4]); g.lineWidth=1;
+    for(const th of [VIL,VIH]){const y=r.base-th/VDD*hh;g.beginPath();g.moveTo(LM,y);g.lineTo(W-10,y);g.stroke();}
+    g.setLineDash([]); g.strokeStyle=r.col; g.lineWidth=2; g.beginPath();
+    for(let k=0;k<n*NS;k++){const x=LM+(k+1)*U/NS, y=r.base-r.a[k]/VDD*hh; k?g.lineTo(x,y):g.moveTo(LM,y);}
+    g.stroke();
+  }
+  T.ph.forEach((p,k)=>{ if(p.sample){const x=LM+k*U+U/2; g.strokeStyle=V.warn[k]?warnc:mut; g.lineWidth=V.warn[k]?2:1; g.beginPath(); g.moveTo(x,155); g.lineTo(x,165); g.stroke(); if(V.warn[k]){g.fillStyle=warnc;g.beginPath();g.arc(x,159,3,0,7);g.fill();}}});
+  const xc=LM+(S.i+1)*U;
+  g.fillStyle=css('--panel'); g.globalAlpha=.6; g.fillRect(xc,0,W-xc,H); g.globalAlpha=1;
+  g.strokeStyle=ink; g.lineWidth=1.5; g.beginPath(); g.moveTo(xc,0); g.lineTo(xc,H); g.stroke();
+  const dec=$('decode'); dec.style.width=(n*U)+'px';
+  dec.innerHTML=T.fr.map((f,j)=>'<div class="blk '+f.cls+(S.i>=f.b&&S.i<f.e?' on':'')+'" tabindex="0" data-j="'+j+'" style="left:'+(f.b*U)+'px;width:'+((f.e-f.b)*U-2)+'px" title="'+f.t+'">'+f.lab+'</div>').join('');
+  const sw=$('scopewrap'); if(xc<sw.scrollLeft+60||xc>sw.scrollLeft+sw.clientWidth-60) sw.scrollLeft=Math.max(0,xc-sw.clientWidth/2);
+}
+cv.addEventListener('click',e=>{const r=cv.getBoundingClientRect();const k=Math.floor((e.clientX-r.left-LM)/U);if(k>=0&&k<T.ph.length){pause();go(k);}});
+$('decode').addEventListener('click',e=>{const b=e.target.closest('.blk');if(b){pause();go(T.fr[+b.dataset.j].b);}});
+$('decode').addEventListener('keydown',e=>{const b=e.target.closest('.blk');if(b&&(e.key==='Enter'||e.key===' ')){e.preventDefault();pause();go(T.fr[+b.dataset.j].b);}});
+
+/* ---------- code panels ---------- */
+function updCode(){
+  const p=T.ph[S.i];
+  document.querySelectorAll('#cCode .ln').forEach(l=>l.classList.toggle('on',+l.dataset.i===p.cl));
+  document.querySelectorAll('#pCode .ln').forEach(l=>l.classList.toggle('on',+l.dataset.i===p.pl));
+  const last=S.i===T.ph.length-1;
+  $('cStat').textContent= S.i===0?'About to start the transfer.': last?'Transfer finished; line '+(p.cl+1)+' runs.':'Blocked inside line '+(p.cl+1)+' while the I²C hardware clocks out the bits.';
+  $('pStat').textContent= p.pl===14?'loop() keeps running. The I²C hardware handles the bits in the background.':'The Wire library interrupted loop() to run line '+(p.pl+1)+'.';
+  $('rmap').innerHTML='<tr><th></th><th>reg</th><th>name</th><th>value</th></tr>'+RMAP.map((r,i)=>'<tr class="'+(i===p.il?'on':'')+'"><td class="ptr">'+(r[0]===p.ptr&&S.scn==='imu'?'▶':'')+'</td><td>'+r[0]+'</td><td>'+r[1]+'</td><td>'+r[2]+'</td></tr>').join('');
+  $('iStat').textContent= S.scn!=='imu'?'Not addressed in this transaction. The IMU compares each address byte and stays silent.': p.il>=0?'Register '+RMAP[p.il][0]+' is being sent or targeted.':'Pointer at '+p.ptr+'.';
+}
+
+/* ---------- readout ---------- */
+function updReadout(){
+  const R=V.R,C=S.C,tr=0.8473*R*C, spec=S.F>2e5?300e-9:1000e-9, imax=3e-3, i=R>0?(VDD-0.4)/R:0;
+  const bad=V.warn.filter(Boolean).length;
+  let s='';
+  if(R>0){
+    if(S.Ri>0&&S.R>0) s+='R<sub>eff</sub> = '+(S.R/1000)+'k ∥ '+(S.Ri/1000)+'k = '+(R/1000).toFixed(2)+' kΩ<br>';
+    s+='τ = R<sub>eff</sub>C = '+(R/1000).toFixed(2)+' kΩ × '+(C*1e12)+' pF = '+(R*C*1e9).toFixed(0)+' ns<br>';
+    s+='rise time (30→70%) = 0.85 τ = '+(tr*1e9).toFixed(0)+' ns, spec ≤ '+(spec*1e9)+' ns: '+(tr<=spec?'<span class="pass">pass</span>':'<span class="fail">fail</span>')+'<br>';
+    s+='sink current when LOW ≈ (5 − 0.4)/R<sub>eff</sub> = '+(i*1000).toFixed(2)+' mA, spec ≤ 3 mA: '+(i<=imax?'<span class="pass">pass</span>':'<span class="fail">fail</span>')+'<br>';
+  } else s+='<span class="fail">No pull-ups.</span> Nothing ever drives the lines HIGH. The controller sees SCL stuck low and the transfer hangs or times out.<br>';
+  s+='bits at risk of misread in this transaction: '+(bad?'<span class="fail">'+bad+'</span>':'<span class="pass">0</span>');
+  $('readout').innerHTML=s;
+}
+
+/* ---------- control ---------- */
+function go(i,preview=false){S.previewPending=preview;S.i=Math.max(0,Math.min(T.ph.length-1,i));updScene();updNow();drawWave();updCode();inspector();}
+// Preview a scenario-specific address or R/W bit immediately after selecting it.
+function scenarioPreview(){
+  const k=T.ph.findIndex(p=>p.tag==='R/W' && p.scl===1);
+  return k>=0?k:Math.min(19,T.ph.length-1);
+}
+function rebuild(keep){
+  T=build(S.scn); simulate();
+  renderCode($('cCode'),C_CODE,S.scn==='fault'?{1:'const uint8_t PERIPH = 0x09;   // typo: wrong address'}:null);
+  renderCode($('pCode'),P_CODE);
+  updReadout(); go(keep?Math.min(S.i,T.ph.length-1):scenarioPreview(),!keep);
+}
+function tick(){ if(S.i>=T.ph.length-1){pause();return;} go(S.i+1); S.timer=setTimeout(tick,+$('spd').value); }
+function play(){ if(S.previewPending||S.i>=T.ph.length-1) go(0); S.playing=true; $('play').textContent='Pause'; S.timer=setTimeout(tick,+$('spd').value); }
+function pause(){ S.playing=false; clearTimeout(S.timer); $('play').textContent='Play'; }
+$('play').onclick=()=>S.playing?pause():play();
+$('fwd').onclick=()=>{pause();go(S.i+1);};
+$('back').onclick=()=>{pause();go(S.i-1);};
+$('reset').onclick=()=>{pause();go(0);};
+$('scn').onchange=e=>{pause();S.scn=e.target.value;rebuild(false);};
+$('selR').onchange=e=>{S.R=+e.target.value;rebuild(true);};
+$('selRi').onchange=e=>{S.Ri=+e.target.value;rebuild(true);};
+$('selC').onchange=e=>{S.C=+e.target.value;rebuild(true);};
+$('selF').onchange=e=>{S.F=+e.target.value;rebuild(true);};
+document.addEventListener('keydown',e=>{
+  if(e.target.closest('select,button,[data-k],.blk'))return;
+  if(e.key===' '){e.preventDefault();S.playing?pause():play();}
+  else if(e.key==='ArrowRight'){pause();go(S.i+1);}
+  else if(e.key==='ArrowLeft'){pause();go(S.i-1);}
+});
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',()=>drawWave());
+new MutationObserver(()=>drawWave()).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+
+drawScene();
+S.sel='sda';
+rebuild(false);
+// The initial waveform is visible. Play and Restart always begin at START/IDLE.
+})();
+</script>
+
+</body>
+</html>

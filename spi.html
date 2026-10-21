@@ -1,0 +1,733 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="author" content="Frank C. Sup IV">
+<meta name="description" content="Teaching simulation for MIE 443 Mechatronics, UMass Amherst. Developed with assistance from Claude (Anthropic).">
+<title>SPI Bus Inspector</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+body{margin:0}
+[hidden]{display:none!important}
+img{max-width:100%}
+
+/* Layout: same bench as the I2C inspector. Controls, live caption, schematic + inspector, 5-channel scope, electrical knobs, code + register map, I2C vs SPI table. */
+:root{
+  --bg:#e9edf1; --panel:#ffffff; --ink:#18212b; --muted:#5a6573; --line:#cdd5dd; --soft:#f3f6f8;
+  --sck:#b06d0f; --copi:#1d66b0; --cipo:#7a3fb0; --cs:#4d5866; --ctrl:#6a4bc0; --peri:#0e8466; --imu:#b8336a; --warn:#c0362c; --ok:#1f7a3d;
+  --pcb:#17707c; --pcbink:#e8f6f7; --pcbedge:#0f5560; --imupcb:#2c3f73; --imuedge:#1e2c52;
+  --f-disp:"IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#11161c; --panel:#19212a; --ink:#e4e9ee; --muted:#9aa6b3; --line:#2e3946; --soft:#202a35;
+  --sck:#e3a23f; --copi:#5aa3ec; --cipo:#b98af0; --cs:#a3adb9; --ctrl:#a68cf0; --peri:#3fc59b; --imu:#f07aa8; --warn:#ff6b5e; --ok:#57c27a;
+  --pcb:#155e68; --pcbink:#e0f3f4; --pcbedge:#0c434b; --imupcb:#2a3b6c; --imuedge:#1b284b; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#11161c; --panel:#19212a; --ink:#e4e9ee; --muted:#9aa6b3; --line:#2e3946; --soft:#202a35;
+  --sck:#e3a23f; --copi:#5aa3ec; --cipo:#b98af0; --cs:#a3adb9; --ctrl:#a68cf0; --peri:#3fc59b; --imu:#f07aa8; --warn:#ff6b5e; --ok:#57c27a;
+  --pcb:#155e68; --pcbink:#e0f3f4; --pcbedge:#0c434b; --imupcb:#2a3b6c; --imuedge:#1b284b; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5}
+.wrap{max-width:1180px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 40px;display:flex;flex-direction:column;gap:14px}
+h1{font-family:var(--f-disp);font-weight:700;font-size:1.9rem;margin:0;letter-spacing:.01em;text-wrap:balance}
+h2{font-family:var(--f-disp);font-weight:600;font-size:.82rem;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin:0 0 8px}
+.sub{color:var(--muted);margin:2px 0 0;max-width:72ch}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;min-width:0}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button,select{font:inherit;font-size:.9rem;color:var(--ink);background:var(--soft);border:1px solid var(--line);border-radius:6px;padding:7px 12px;cursor:pointer;max-width:100%}
+button:hover,select:hover{border-color:var(--muted)}
+:focus-visible{outline:2px solid var(--copi);outline-offset:2px}
+button.primary{background:var(--ink);color:var(--panel);border-color:var(--ink);min-width:84px;font-weight:600}
+.spacer{flex:1}
+.tcount{font-family:var(--f-mono);font-size:.85rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.now{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;align-items:baseline}
+.now .tag{font-family:var(--f-mono);font-size:.78rem;padding:2px 8px;border-radius:4px;background:var(--soft);border:1px solid var(--line);white-space:nowrap}
+.now .ttl{font-family:var(--f-disp);font-weight:600;font-size:1.25rem}
+.now .note{grid-column:1/-1;margin:0;max-width:85ch}
+.now.warnstate{border-color:var(--warn)}
+.warnline{grid-column:1/-1;color:var(--warn);font-weight:600;margin:0}
+.grid2{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(0,1fr);gap:14px}
+@media (max-width:860px){.grid2{grid-template-columns:1fr}}
+.scroll{overflow-x:auto}
+#scene{width:100%;min-width:560px;display:block}
+#scene [data-k]{cursor:pointer}
+#scene [data-k]:hover .hl, #scene .hl.sel{stroke:var(--ink);stroke-width:2.5}
+.insp h3{font-family:var(--f-disp);font-size:1.15rem;margin:0 0 6px}
+.insp p{margin:0 0 8px}
+.insp .kv{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;font-family:var(--f-mono);font-size:.85rem;margin:8px 0;font-variant-numeric:tabular-nums}
+.insp .kv span:nth-child(odd){color:var(--muted)}
+.hint{color:var(--muted);font-size:.88rem}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:.82rem;color:var(--muted);margin-top:8px}
+.sw{display:inline-block;width:12px;height:12px;border-radius:2px;vertical-align:-1px;margin-right:5px}
+.decode{position:relative;height:54px;margin-left:56px}
+.blk{position:absolute;height:22px;border-radius:4px;font-family:var(--f-mono);font-size:.72rem;display:flex;align-items:center;justify-content:center;cursor:pointer;border:1px solid transparent;overflow:hidden;white-space:nowrap;color:var(--ink)}
+.blk.cs{background:color-mix(in srgb,var(--ink) 14%,transparent)}
+.blk.mo{background:color-mix(in srgb,var(--copi) 22%,transparent)}
+.blk.mp{background:color-mix(in srgb,var(--peri) 22%,transparent)}
+.blk.mi{background:color-mix(in srgb,var(--imu) 22%,transparent)}
+.blk.bad{background:color-mix(in srgb,var(--warn) 28%,transparent)}
+.blk.on{border-color:var(--ink)}
+#wave{display:block;cursor:crosshair}
+.elec{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:end}
+.elec .readout{grid-column:1/-1}
+@media (max-width:760px){.elec{grid-template-columns:1fr 1fr}}
+.elec label{display:flex;flex-direction:column;gap:4px;font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.elec select{width:100%}
+.readout{font-family:var(--f-mono);font-size:.84rem;line-height:1.6;font-variant-numeric:tabular-nums}
+.pass{color:var(--ok);font-weight:600}.fail{color:var(--warn);font-weight:600}
+.code3{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1.1fr) minmax(0,.75fr);gap:14px}
+@media (max-width:980px){.code3{grid-template-columns:1fr}}
+.code{min-width:0}
+.code .hd{display:flex;align-items:center;gap:8px;font-family:var(--f-disp);font-weight:600;margin-bottom:6px}
+.dot{width:10px;height:10px;border-radius:50%}
+pre{margin:0;font-family:var(--f-mono);font-size:.76rem;line-height:1.55;background:var(--soft);border:1px solid var(--line);border-radius:6px;padding:8px 0;overflow-x:auto}
+pre .ln{display:block;padding:0 12px;white-space:pre;border-left:3px solid transparent}
+pre .ln.on{background:color-mix(in srgb,var(--sck) 18%,transparent);border-left-color:var(--sck)}
+pre .ln.bug{background:color-mix(in srgb,var(--warn) 16%,transparent)}
+pre .cm{color:var(--muted)}
+.cstat{font-size:.86rem;color:var(--muted);margin-top:6px;min-height:1.4em}
+table.rm{width:100%;border-collapse:collapse;font-family:var(--f-mono);font-size:.78rem;font-variant-numeric:tabular-nums}
+table.rm th{font-family:var(--f-disp);font-weight:600;color:var(--muted);text-align:left;padding:4px 6px;border-bottom:1px solid var(--line)}
+table.rm td{padding:5px 6px;border-bottom:1px solid var(--line)}
+table.rm tr.on td{background:color-mix(in srgb,var(--imu) 16%,transparent)}
+table.rm td.ptr{color:var(--imu);font-weight:600;width:1.5em}
+.cmp{overflow-x:auto}
+table.cmpt{border-collapse:collapse;font-size:.9rem;min-width:560px;width:100%}
+table.cmpt th,table.cmpt td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+table.cmpt th{font-family:var(--f-disp);font-weight:600;color:var(--muted)}
+table.cmpt td:first-child{font-weight:600}
+ol.try{margin:0;padding-left:1.3em;display:flex;flex-direction:column;gap:6px;max-width:90ch}
+
+/* UMass Amherst brand layer */
+:root{--brand:#881C1C; --onbrand:#ffffff; --brandfg:#881C1C; --brandtint:#f5e8e8}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--brandfg:#e58a86; --brandtint:#3a1f21}}
+:root[data-theme="dark"]{--brandfg:#e58a86; --brandtint:#3a1f21}
+.brand{background:var(--brand);color:var(--onbrand)}
+.brand .bin{max-width:1240px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:10px;display:flex;flex-wrap:wrap;gap:4px 16px;align-items:baseline;justify-content:space-between}
+.brand .u1{font-weight:700;letter-spacing:.04em;font-size:.95rem}
+.brand .u2{font-size:.85rem;opacity:.9}
+header{border-bottom:3px solid var(--brand);padding-bottom:10px}
+button.primary{background:var(--brand)!important;border-color:var(--brand)!important;color:var(--onbrand)!important}
+:focus-visible{outline-color:var(--brandfg)!important}
+.credit{border-top:3px solid var(--brand);padding-top:14px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:14px;font-size:.88rem;color:var(--muted)}
+@media (max-width:760px){.credit{grid-template-columns:1fr}}
+.credit h3{font-size:.8rem;text-transform:uppercase;letter-spacing:.08em;color:var(--brandfg);margin:0 0 4px}
+.credit p{margin:0 0 6px;max-width:75ch}
+.credit .cite{background:var(--brandtint);border-left:3px solid var(--brand);padding:8px 10px;border-radius:0 4px 4px 0;color:var(--ink);font-size:.85rem}
+
+.scope{border:1px solid var(--line);border-left:4px solid var(--brand);border-radius:0 6px 6px 0;background:var(--panel);padding:10px 14px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 18px;font-size:.9rem;max-width:100%}
+@media (max-width:700px){.scope{grid-template-columns:1fr}}
+.scope b{color:var(--brandfg)}
+.scope p{margin:0}
+details.assume-wrap summary{cursor:pointer;font-family:var(--f-disp);font-weight:600;font-size:.85rem;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}
+details.assume-wrap[open] summary{margin-bottom:8px}
+</style>
+</head>
+<body>
+
+<div class="brand"><div class="bin"><span class="u1">UMASS AMHERST</span><span class="u2">Mechanical and Industrial Engineering · MIE 443 Mechatronics</span></div></div>
+<div class="wrap">
+  <header>
+    <h1>SPI Bus Inspector</h1>
+    <p class="sub">The same three devices as the I²C bench, now on SPI: a controller UNO R4 Minima, a second Minima, and an Adafruit LSM6DS3TR-C breakout with 5 V-safe logic. Each peripheral gets its own chip-select wire. Step one clock edge at a time and tap any wire, driver, register, or board.</p>
+  </header>
+
+  <div class="scope" role="note" aria-label="What this model is">
+    <p><b>Good for:</b> seeing the order of events on the wires, who drives each line, and what the code is doing while bits move.</p>
+    <p><b>Not for:</b> verifying real-board wiring, exact timing, rise/fall limits or library behavior. Voltage thresholds, driver impedances and line capacitances are illustrative; edges are first-order RC with no ringing/noise, byte gaps are shortened, and library/interrupt delays are omitted. Code panels are instructional examples, not tested production sketches.</p>
+  </div>
+
+  <div class="panel bar" role="toolbar" aria-label="Playback">
+    <select id="scn" aria-label="Transaction">
+      <option value="write">Write: command 0x20 + setpoint 42 to Minima</option>
+      <option value="read">Read: 2-byte encoder count from Minima</option>
+      <option value="imu">Read: IMU accel Z (register 0x2C)</option>
+      <option value="fault">Fault: two chip selects LOW at once</option>
+    </select>
+    <select id="mode" aria-label="SPI mode">
+      <option value="0" selected>SPI mode 0</option>
+      <option value="3">SPI mode 3</option>
+    </select>
+    <button id="back" title="Step back (←)">◀ Step</button>
+    <button id="play" class="primary" title="Play / pause (space)">Play</button>
+    <button id="fwd" title="Step forward (→)">Step ▶</button>
+    <button id="reset">Restart</button>
+    <select id="spd" aria-label="Playback speed">
+      <option value="1100">Slow</option>
+      <option value="550" selected>Medium</option>
+      <option value="200">Fast</option>
+    </select>
+    <span class="spacer"></span>
+    <span class="tcount" id="tcount"></span>
+  </div>
+
+  <div class="panel now" id="now" aria-live="polite"></div>
+
+  <div class="grid2">
+    <div class="panel">
+      <h2>Bench</h2>
+      <div class="scroll"><svg id="scene" viewBox="0 0 760 482" role="img" aria-label="Controller, Minima and IMU wired by SCK, COPI, CIPO, two chip selects and GND"></svg></div>
+      <div class="legend">
+        <span><span class="sw" style="background:var(--ctrl)"></span>Controller driving</span>
+        <span><span class="sw" style="background:var(--peri)"></span>Minima driving CIPO</span>
+        <span><span class="sw" style="background:var(--imu)"></span>IMU driving CIPO</span>
+        <span><b>Overbar on CS means active-low: LOW = selected, HIGH = released.</b> Faded wire = LOW. Dashed = high impedance; red = contention.</span>
+      </div>
+    </div>
+    <div class="panel insp" id="insp"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Logic analyzer · analog view</h2>
+    <div class="scroll" id="scopewrap">
+      <div class="decode" id="decode"></div>
+      <canvas id="wave" height="230"></canvas>
+    </div>
+    <p class="hint" style="margin:6px 0 0">Top decode row is what the controller sent on COPI; bottom row is what came back on CIPO. Ticks mark the sampling edge. Gaps between bytes are shortened; in a real sketch each SPI.transfer() call adds a few microseconds.</p>
+  </div>
+
+  <div class="panel">
+    <h2>Electrical design</h2>
+    <p class="cap"><b>Interpretation:</b> This simplified analog trace is a teaching approximation, not a signal-integrity or device-speed qualification. Check the selected devices, actual pull-ups/loads, bus specification and oscilloscope measurements before hardware use.</p>
+    <div class="elec">
+      <label>Clock<select id="selF">
+        <option value="1000000" selected>1 MHz</option><option value="4000000">4 MHz</option><option value="10000000">10 MHz</option></select></label>
+      <label>Line capacitance<select id="selC">
+        <option value="30e-12">30 pF (short traces)</option><option value="100e-12" selected>100 pF (breadboard jumpers)</option><option value="300e-12">300 pF (long wires)</option></select></label>
+      <label>Driver output resistance<select id="selR">
+        <option value="25">25 Ω</option><option value="50" selected>50 Ω</option><option value="100">100 Ω</option></select></label>
+      <div class="readout" id="readout"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>What the code and the IMU are doing</h2>
+    <div class="code3">
+      <div class="code"><div class="hd"><span class="dot" style="background:var(--ctrl)"></span>Controller sketch</div><pre id="cCode"></pre><div class="cstat" id="cStat"></div></div>
+      <div class="code"><div class="hd"><span class="dot" style="background:var(--peri)"></span>Minima peripheral (conceptual)</div><pre id="pCode"></pre><div class="cstat" id="pStat"></div></div>
+      <div class="code"><div class="hd"><span class="dot" style="background:var(--imu)"></span>IMU register map (excerpt)</div><table class="rm" id="rmap"></table><div class="cstat" id="iStat"></div></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>I²C and SPI side by side</h2>
+    <div class="cmp"><table class="cmpt">
+      <tr><th></th><th>I²C</th><th>SPI</th></tr>
+      <tr><td>Wires for these 3 devices</td><td>SDA, SCL, GND: 3 no matter how many devices</td><td>SCK, COPI, CIPO, GND + one CS per peripheral: 6 here</td></tr>
+      <tr><td>Who is talking to whom</td><td>7-bit address sent on the bus</td><td>Which CS wire is LOW</td></tr>
+      <tr><td>Did it arrive?</td><td>ACK/NACK every byte</td><td>No acknowledgement. A missing or unpowered device returns whatever the floating CIPO wire reads, often 0xFF or 0x00, and nothing flags it.</td></tr>
+      <tr><td>Direction</td><td>Half duplex: one sender at a time on SDA</td><td>Full duplex: every clock moves one bit each way</td></tr>
+      <tr><td>Driver type</td><td>Open-drain + pull-up resistor. Rising edges are slow RC charges.</td><td>Push-pull. Both edges are fast, so clocks of several MHz are easy.</td></tr>
+      <tr><td>Typical speed</td><td>100 kHz or 400 kHz</td><td>1–20 MHz, set by the slowest device</td></tr>
+      <tr><td>Worst wiring mistake</td><td>Missing pull-ups: bus hangs</td><td>Two CS LOW: CIPO drivers short each other</td></tr>
+      <tr><td>Arduino peripheral mode</td><td>Wire.begin(address) works out of the box</td><td>The standard SPI library is controller-only; a peripheral needs register-level code</td></tr>
+    </table></div>
+  </div>
+
+  <div class="panel">
+    <h2>Try this</h2>
+    <ol class="try">
+      <li>Watch both shift registers during one byte. After 8 clocks, what has happened to the controller's byte and the peripheral's byte?</li>
+      <li>In the encoder read, the first byte the controller receives is 0xA5, not data. Why does the Minima need a byte of delay before it can answer a command?</li>
+      <li>The controller sends 0x00 bytes while reading. What would change if it sent 0xFF instead? What would the IMU think if it sent 0xAC again?</li>
+      <li>Switch between mode 0 and mode 3. Which edge samples data in each? What stays the same?</li>
+      <li>Run the fault case and pause on a bit where the two peripherals disagree. Compute the CIPO voltage and the current from the driver resistances.</li>
+      <li>Set 10 MHz and 300 pF. Does the RC model indicate sufficient clock-edge margin? Compare with the I²C open-drain rise time, and explain why push-pull often supports faster clocks. This RC model alone does not certify a particular sensor maximum clock rate.</li>
+    </ol>
+  </div>
+  <footer class="credit">
+    <div><h3>Author</h3><p><b>Frank C. Sup IV</b>, Professor, Mechanical and Industrial Engineering, University of Massachusetts Amherst</p><p>Version 1.4 · October 2026</p><h3 style="margin-top:10px">AI use disclosure</h3><p>Developed with assistance from Claude (Anthropic) and revised with assistance from ChatGPT (OpenAI), including AI-generated simulation code and draft explanations under the author's direction. The author is responsible for the content.</p></div>
+    <div><h3>How to cite</h3><p class="cite">Sup, F. C., IV. (2026). <i>SPI bus inspector</i> (Version 1.4) [Interactive simulation]. University of Massachusetts Amherst.</p><p>Add the page URL to the end of the citation once it is hosted.</p><p>This is a teaching model. It simplifies the physics on purpose and states its assumptions on the page. Check results against datasheets and measurements before using them for design.</p></div>
+  </footer>
+</div>
+
+<script>
+(function(){
+/* PROTOCOL SCOPE: event-by-event SPI demonstration. Analog line voltages
+   are an RC/output-impedance illustration, not physical board simulation.
+   SPI mode, chip-select setup/hold and actual peripheral clock limits must be
+   verified against device datasheets; sample sketch is conceptual. */
+
+const $=id=>document.getElementById(id);
+const VDD=5, VIH=3.5, VIL=1.5, U=24, LM=56, NS=40;
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const DEV=['C','P','I'];
+const NAME={C:'Controller',P:'Minima',I:'IMU'};
+const COL={C:'var(--ctrl)',P:'var(--peri)',I:'var(--imu)'};
+const hx=v=>'0x'+v.toString(16).toUpperCase().padStart(2,'0');
+
+/* ---------- code ---------- */
+const C_CODE=[
+'#include <SPI.h>',
+'const int CS_MINIMA = 10, CS_IMU = 9;',
+'SPISettings cfg(1000000, MSBFIRST, SPI_MODE0);',
+'void setup() {',
+'  pinMode(CS_MINIMA, OUTPUT); digitalWrite(CS_MINIMA, HIGH);',
+'  pinMode(CS_IMU, OUTPUT);    digitalWrite(CS_IMU, HIGH);',
+'  SPI.begin();',
+'  // IMU configured beforehand: CTRL3_C=0x44 (BDU + IF_INC)',
+'  // CTRL1_XL=0x40 (104 Hz, ±2 g), SPI register writes not shown',
+'}',
+'void loop() {',
+'  SPI.beginTransaction(cfg);',
+'  // write: motor setpoint to Minima',
+'  digitalWrite(CS_MINIMA, LOW);',
+'  uint8_t st = SPI.transfer(0x20); // command: write setpoint',
+'  SPI.transfer(42);                // value; reply ignored',
+'  digitalWrite(CS_MINIMA, HIGH);',
+'  // read: encoder count from Minima',
+'  digitalWrite(CS_MINIMA, LOW);',
+'  SPI.transfer(0x10);              // command: read count',
+'  uint8_t lo = SPI.transfer(0x00); // dummy byte clocks data in',
+'  uint8_t hi = SPI.transfer(0x00);',
+'  digitalWrite(CS_MINIMA, HIGH);',
+'  int16_t count = (hi << 8) | lo;',
+'  // read: IMU accel Z',
+'  digitalWrite(CS_IMU, LOW);',
+'  SPI.transfer(0x80 | 0x2C);       // 0xAC: read from OUTZ_L_XL',
+'  uint8_t zl = SPI.transfer(0x00); // low byte, auto-increment',
+'  uint8_t zh = SPI.transfer(0x00); // high byte',
+'  digitalWrite(CS_IMU, HIGH);',
+'  SPI.endTransaction();',
+'  float az = (int16_t)((zh << 8) | zl) * 0.000061; // g',
+'  delay(100);',
+'}'];
+const P_CODE=[
+'// Conceptual: the standard SPI library has no',
+'// peripheral mode on the R4; this is the logic',
+'// register-level code has to implement.',
+'volatile uint8_t setpoint = 0, cmd = 0, n = 0;',
+'int16_t count = 500;               // 0x01F4',
+'void onCSFall() {                  // pin interrupt',
+'  n = 0;',
+'  spiLoadTx(0xA5);                 // status goes out first',
+'}',
+'void onSpiByte(uint8_t rx) {       // SPI interrupt',
+'  if (n == 0) cmd = rx;',
+'  if (cmd == 0x10) spiLoadTx(n == 0 ? count & 0xFF : count >> 8);',
+'  else spiLoadTx(0xA5);',
+'  if (cmd == 0x20 && n == 1) setpoint = rx;',
+'  n++;',
+'}',
+'void loop() { /* motor control runs here */ }'];
+const RMAP=[['0x2C','OUTZ_L_XL','0x00'],['0x2D','OUTZ_H_XL','0x40'],['0x10','CTRL1_XL','0x40'],['0x12','CTRL3_C','0x44'],['0x0F','WHO_AM_I','0x6A']];
+function L(lines,sub,n=0){let c=0;for(let i=0;i<lines.length;i++){if(lines[i].includes(sub)){if(c===n)return i;c++;}}return -1;}
+function renderCode(el,lines,subst,bug){
+  el.innerHTML=lines.map((t,i)=>{
+    let s=(subst&&subst[i]!=null)?subst[i]:t;
+    s=s.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    s=s.replace(/(\/\/.*|\/\*.*\*\/)$/,'<span class="cm">$1</span>');
+    return '<span class="ln'+(bug===i?' bug':'')+'" data-i="'+i+'">'+s+'</span>';}).join('');
+}
+
+/* ---------- transaction builder ---------- */
+let MODE=0;
+function build(scn){
+  const ph=[], fr=[];
+  const idleSck = MODE===3?1:0;
+  const blank=lab=>({lab,cells:Array(8).fill(''),recv:0});
+  const reg={C:blank('shift register: idle'),P:blank('shift register: idle'),I:blank('shift register: idle')};
+  const st={C:'idle in loop()',P:'deselected (loop() runs)',I:'deselected'};
+  const cs={P:1,I:1};
+  let copi=0, cl=0, pl=L(P_CODE,'void loop'), il=-1, ptr='0x2C';
+  const snap=()=>{const r={};DEV.forEach(d=>r[d]={lab:reg[d].lab,cells:reg[d].cells.slice(),recv:reg[d].recv});return r;};
+  const push=o=>{ph.push(Object.assign({csP:cs.P,csI:cs.I,copi,cl,pl,il,ptr,reg:snap(),st:Object.assign({},st),cipo:{}},o));};
+  const frame=(row,cls,lab,b,e)=>fr.push({row,cls,lab,b,e});
+
+  function transaction(devs,cb,db,o){
+    // o: {csLine, codeLines[], pIsr[], notes}
+    const sel=devs.map(d=>NAME[d]).join(' and ');
+    devs.forEach(d=>cs[d]=0);
+    devs.forEach(d=>{st[d]='selected';});
+    st.C='CS LOW';
+    cl=o.csLow;
+    if(devs.includes('P')) pl=L(P_CODE,'spiLoadTx(0xA5);');
+    const csStart=ph.length;
+    const firstD={}; devs.forEach(d=>firstD[d]=(db[d][0]>>7)&1);
+    copi=(cb[0]>>7)&1;
+    push({sck:idleSck,cipo:Object.assign({},firstD),tag:'CS↓',title:'Chip select: '+(o.csTitle||sel+' selected'),
+      note:o.csNote||('The controller drives the '+(devs[0]==='P'?'CS_MINIMA':'CS_IMU')+' wire LOW. Only the '+sel+' listens now and switches its CIPO output from high impedance to driving. The other peripheral\'s CS is HIGH, so it ignores the clock and keeps CIPO undriven. There is no address byte: the wire itself is the address.')});
+    if(devs.includes('P')) pl=L(P_CODE,'void loop');
+    for(let j=0;j<cb.length;j++){
+      const cbits=[];for(let i=7;i>=0;i--)cbits.push((cb[j]>>i)&1);
+      const dbits={}; devs.forEach(d=>{dbits[d]=[];for(let i=7;i>=0;i--)dbits[d].push((db[d][j]>>i)&1);});
+      if(j>0){
+        const nf={}; devs.forEach(d=>nf[d]=dbits[d][0]);
+        copi=cbits[0];
+        const isP=devs.includes('P'), isr=o.isr&&o.isr[j-1];
+        if(isr!=null) pl=isr;
+        push({sck:idleSck,cipo:nf,gap:true,tag:'gap',title:'Between bytes',
+          note: (isP&&devs.length===1?'SPI.transfer() returned and the next call is starting. On the Minima, the SPI interrupt just ran line '+(pl+1)+' to load its next transmit byte. It has to finish before the first clock of the next byte. If it is late, the old byte goes out again and SPI has no ACK to tell anyone.':
+                 devs.length>1?'Both selected peripherals present their next bit on the same CIPO wire.':
+                 'The IMU\'s hardware already has the next register ready because it auto-increments. No software runs on the IMU side.')});
+        pl=L(P_CODE,'void loop');
+      }
+      cl=o.code[j];
+      reg.C={lab:'shift register',cells:cbits.map(String),recv:0};
+      devs.forEach(d=>reg[d]={lab:'shift register',cells:dbits[d].map(String),recv:0});
+      const bstart=ph.length;
+      for(let k=0;k<8;k++){
+        copi=cbits[k];
+        const out={}; devs.forEach(d=>out[d]=dbits[d][k]);
+        const vals=devs.map(d=>out[d]), fight=devs.length>1&&vals[0]!==vals[1];
+        const rxC = fight?'?':String(vals[0]);
+        st.C='shifting byte '+(j+1); devs.forEach(d=>st[d]='shifting');
+        const mtxt= MODE===0? 'SCK is LOW. ':'SCK falls (mode 3 shifts out on the falling edge). ';
+        push({sck:0,cipo:out,fight,tag:'D'+(7-k),title:'Set bit D'+(7-k)+': COPI = '+copi+', CIPO = '+(fight?'conflict':vals[0]),
+          note: mtxt+'The controller puts bit D'+(7-k)+' of '+hx(cb[j])+' on COPI ('+copi+'). '+(fight?'Both selected peripherals drive CIPO at the same time: the Minima drives '+out.P+' and the IMU drives '+out.I+'. One output is connected to 5 V and the other to GND, through two small driver resistances.':'At the same moment the '+sel+' puts bit D'+(7-k)+' of '+hx(db[devs[0]][j])+' on CIPO ('+vals[0]+'). Two bits move at once, one each way.')});
+        // sample: shift registers
+        reg.C.cells.shift(); reg.C.cells.push(rxC); reg.C.recv=k+1;
+        devs.forEach(d=>{reg[d].cells.shift(); reg[d].cells.push(String(copi)); reg[d].recv=k+1;});
+        push({sck:1,cipo:out,fight,sample:true,tag:'D'+(7-k),title:'SCK rises: both sides sample',
+          note:'Rising edge. The '+sel+' samples COPI = '+copi+' and the controller samples CIPO = '+(fight?'an undefined voltage, so its bit is a guess':vals[0])+'. Every shift register moves one place: the sampled bit enters on the right, and after 8 clocks the two registers have swapped contents.'+(fight?' Meanwhile current flows from one driver into the other.':(devs.length>1?' The two drivers happen to agree on this bit, so it reads correctly by luck.':''))});
+      }
+      const rxByte=reg.C.cells.join('');
+      const cls = devs.length>1?'bad': devs[0]==='P'?'mp':'mi';
+      frame(0,'mo',hx(cb[j]),bstart,ph.length);
+      frame(1,cls,(rxByte.includes('?')?'0b'+rxByte:hx(parseInt(rxByte,2)))+(o.lab&&o.lab[j]?' '+o.lab[j]:''),bstart,ph.length);
+      if(o.after) o.after(j);
+    }
+    // end: clock idle, then CS high
+    if(MODE===0){ push({sck:0,cipo:Object.assign({},...devs.map(d=>({[d]:+reg[d].cells[7]||0}))),tag:'end',title:'SCK returns to idle LOW',note:'Mode 0 clock idles LOW. The byte is complete.'}); }
+    devs.forEach(d=>cs[d]=1);
+    cl=o.csHigh; st.C='CS HIGH';
+    devs.forEach(d=>st[d]='deselected');
+    if(o.endPl!=null) pl=o.endPl;
+    const csE=ph.length;
+    push({sck:idleSck,cipo:{},tag:'CS↑',title:'Chip select released',note:o.endNote});
+    frame(0,'cs','CS↓',csStart,csStart+1); frame(1,'cs','CS↓',csStart,csStart+1);
+    frame(0,'cs','CS↑',csE,csE+1); frame(1,'cs','CS↑',csE,csE+1);
+    pl=L(P_CODE,'void loop');
+  }
+
+  push({sck:idleSck,cipo:{},tag:'IDLE',title:'Bus idle',note:'Both chip selects are HIGH, so neither peripheral is listening. The controller drives SCK at its idle level ('+(idleSck?'HIGH for mode 3':'LOW for mode 0')+'). CIPO is not driven by anyone: it floats.'});
+  if(scn==='write'){
+    transaction(['P'],[0x20,42],{P:[0xA5,0xA5]},{csLow:L(C_CODE,'digitalWrite(CS_MINIMA, LOW)',0),csHigh:L(C_CODE,'digitalWrite(CS_MINIMA, HIGH)',1),
+      code:[L(C_CODE,'SPI.transfer(0x20)'),L(C_CODE,'SPI.transfer(42)')],isr:[L(P_CODE,'else spiLoadTx')],lab:['status','ignored'],
+      endPl:L(P_CODE,'setpoint = rx'),endNote:'CS goes HIGH and the Minima turns its CIPO driver off. Its SPI interrupt for byte 2 stored 42 in setpoint. The controller received 0xA5 twice while sending. It kept the first as a status byte and threw the second away. Every SPI transfer is an exchange, even when you only want to write.'});
+  } else if(scn==='read'){
+    transaction(['P'],[0x10,0x00,0x00],{P:[0xA5,0xF4,0x01]},{csLow:L(C_CODE,'digitalWrite(CS_MINIMA, LOW)',1),csHigh:L(C_CODE,'digitalWrite(CS_MINIMA, HIGH)',2),
+      code:[L(C_CODE,'SPI.transfer(0x10)'),L(C_CODE,'uint8_t lo'),L(C_CODE,'uint8_t hi')],isr:[L(P_CODE,'if (cmd == 0x10)'),L(P_CODE,'if (cmd == 0x10)')],lab:['status','lo','hi'],
+      endNote:'CS HIGH. The controller received 0xA5, 0xF4, 0x01. The first byte cannot be the answer: the Minima only learned the command when byte 1 finished, so it answers starting with byte 2. count = (0x01 << 8) | 0xF4 = 500.'});
+    ph[ph.length-1].cl=L(C_CODE,'int16_t count'); ph[ph.length-1].st.C='count = 500';
+  } else if(scn==='imu'){
+    transaction(['I'],[0xAC,0x00,0x00],{I:[0x00,0x00,0x40]},{csLow:L(C_CODE,'digitalWrite(CS_IMU, LOW)'),csHigh:L(C_CODE,'digitalWrite(CS_IMU, HIGH)',1),
+      code:[L(C_CODE,'0x80 | 0x2C'),L(C_CODE,'uint8_t zl'),L(C_CODE,'uint8_t zh')],lab:['don\'t care','lo','hi'],
+      after:j=>{ if(j===0){il=0;ptr='0x2C';st.I='pointer 0x2C';} if(j===1){il=1;ptr='0x2D';st.I='auto-inc → 0x2D';} },
+      endNote:'CS HIGH. Byte 1 told the IMU "read, starting at 0x2C": 0xAC = 1010 1100, where bit 7 = 1 means read and the low 7 bits are the register. Its reply during that byte means nothing. The next two bytes are OUTZ_L_XL = 0x00 and OUTZ_H_XL = 0x40, so az = 0x4000 = 16384 counts ≈ 1.00 g at ±2 g (0.061 mg/LSB).'});
+    const Lp=ph[ph.length-1]; Lp.cl=L(C_CODE,'float az'); Lp.st.C='az = 1.00 g'; Lp.il=-1;
+  } else {
+    // fault: CS_MINIMA left low; then CS_IMU goes low for the IMU read
+    cs.P=0; st.P='still selected (bug)';
+    ph[0].csP=0; ph[0].st=Object.assign({},st); ph[0].title='CS_MINIMA was never released';
+    ph[0].note='The previous Minima transfer never set CS_MINIMA HIGH again. The Minima is still selected and still listening. Nothing looks wrong yet because CIPO only matters while the clock runs.';
+    ph[0].cl=L(C_CODE,'digitalWrite(CS_MINIMA, HIGH)',2);
+    transaction(['P','I'],[0xAC,0x00,0x00],{P:[0xA5,0xA5,0xA5],I:[0x00,0x00,0x40]},{csLow:L(C_CODE,'digitalWrite(CS_IMU, LOW)'),csHigh:L(C_CODE,'digitalWrite(CS_IMU, HIGH)',1),
+      code:[L(C_CODE,'0x80 | 0x2C'),L(C_CODE,'uint8_t zl'),L(C_CODE,'uint8_t zh')],
+      csTitle:'CS_IMU LOW while CS_MINIMA is still LOW',csNote:'Now CS_IMU goes LOW for the IMU read. Two peripherals are selected and both turn on their CIPO drivers. Both also receive every COPI byte: the Minima sees 0xAC as a command it does not know.',
+      endNote:'CS HIGH. The controller got garbage wherever the Minima and the IMU disagreed. No error is reported anywhere: SPI has no ACK and SPI.transfer() just returns whatever voltage it saw. Repeated, this fight can overheat or damage the output pins.'});
+  }
+  return {ph,fr};
+}
+
+/* ---------- electrical ---------- */
+let S={scn:'write',i:0,playing:false,timer:null,sel:null,F:1e6,C:100e-12,R:50};
+let T,V;
+const LINES=['csP','csI','sck','copi','cipo'];
+function simulate(){
+  const ph=T.ph, half=1/(2*S.F), dt=half/NS, tau=S.R*S.C;
+  const v={csP:VDD,csI:VDD,sck:ph[0].sck*VDD,copi:0,cipo:2.0};
+  const out={}; LINES.forEach(l=>out[l]=new Float32Array(ph.length*NS));
+  const hiz=new Uint8Array(ph.length), fight=new Uint8Array(ph.length); let prevT=null;
+  for(let k=0;k<ph.length;k++){
+    const p=ph[k];
+    const tg={csP:p.csP*VDD,csI:p.csI*VDD,sck:p.sck*VDD,copi:p.copi*VDD};
+    const dv=Object.values(p.cipo);
+    let ct=null, ctau=tau;
+    if(dv.length===1) ct=dv[0]*VDD;
+    else if(dv.length===2){ ctau=tau/2; ct= dv[0]===dv[1]? dv[0]*VDD : VDD/2; if(dv[0]!==dv[1]) fight[k]=1; }
+    else hiz[k]=1;
+    // data lines change a little after the clock or CS edge, so edge order is visible
+    const dly = p.sample?0:Math.round(NS*0.3);
+    for(let j=0;j<NS;j++){
+      for(const l of ['csP','csI','sck']){ v[l]+=(tg[l]-v[l])*(1-Math.exp(-dt/tau)); out[l][k*NS+j]=v[l]; }
+      const cpt = j<dly&&prevT? prevT.copi : tg.copi; v.copi+=(cpt-v.copi)*(1-Math.exp(-dt/tau)); out.copi[k*NS+j]=v.copi;
+      const useP = j<dly&&prevT;
+      const t2 = useP?prevT.ct:ct, tau2=useP?prevT.ctau:ctau;
+      if(t2!=null) v.cipo+=(t2-v.cipo)*(1-Math.exp(-dt/tau2));
+      out.cipo[k*NS+j]=v.cipo;
+    }
+    prevT={copi:tg.copi,ct,ctau};
+  }
+  const warn=ph.map((p,k)=>{
+    if(fight[k]) return 'Contention: CIPO ≈ '+(VDD/2).toFixed(1)+' V, current ≈ '+(VDD/(2*S.R)*1000).toFixed(0)+' mA from one driver into the other.';
+    if(!p.sample) return null; const m=k*NS+(NS>>1);
+    if(p.sck&&out.sck[m]<VIH) return 'SCK has not reached VIH by mid-pulse: edges are too slow for this clock and capacitance.';
+    return null; });
+  V={out,hiz,fight,warn,half,tau};
+}
+
+/* ---------- scene ---------- */
+const svg=$('scene');
+const Y={csP:120,sck:170,copi:210,cipo:250,gnd:290,csI:322};
+const TAP={sck:300,copi:340,cipo:380,gnd:420};
+const LCOL={csP:'var(--cs)',csI:'var(--cs)',sck:'var(--sck)',copi:'var(--copi)',cipo:'var(--cipo)',gnd:'var(--muted)'};
+function vhop(x,y0,y1,hops){let d='M'+x+' '+y0;hops.forEach(h=>{d+=' V'+(h-6)+' A6 6 0 0 1 '+x+' '+(h+6);});return d+' V'+y1;}
+const t=(x,y,s,o={})=>'<text x="'+x+'" y="'+y+'" font-family="'+(o.f||'var(--f-mono)')+'" font-size="'+(o.s||11)+'"'+(o.w?' font-weight="'+o.w+'"':'')+(o.a?' text-anchor="'+o.a+'"':'')+' fill="'+(o.c||'var(--pcbink)')+'"'+(o.id?' id="'+o.id+'"':'')+(o.op?' opacity="'+o.op+'"':'')+'>'+s+'</text>';
+function cells(w,x0,y){let h='';for(let k=0;k<8;k++)h+='<rect id="rc'+w+k+'" x="'+(x0+k*19)+'" y="'+y+'" width="17" height="21" rx="2" fill="var(--pcbedge)" stroke="var(--pcbink)" stroke-opacity=".35"/>'+t(x0+8.5+k*19,y+15,'',{id:'rt'+w+k,a:'middle',s:12});return h;}
+function pbox(w,line,x,y){return '<g data-k="pin:'+w+':'+line+'" tabindex="0"><rect id="pb'+w+line+'" x="'+x+'" y="'+(y-8)+'" width="30" height="16" rx="3" fill="var(--pcbedge)" stroke="var(--pcbink)" stroke-opacity=".5"/>'+t(x+15,y+4,'',{id:'pt'+w+line,a:'middle',s:9.5})+'</g>';}
+function board(w,x){
+  const right=w==='C', px=right?x+210:x, bx=right?x+176:x+4;
+  const lines = right?['csP','sck','copi','cipo','csI']:['csP','sck','copi','cipo'];
+  let h='<g data-k="'+w+'" tabindex="0"><rect class="hl" x="'+x+'" y="90" width="210" height="252" rx="10" fill="var(--pcb)" stroke="var(--pcbedge)" stroke-width="2"/>'+
+    t(right?x+14:x+44,112,right?'CONTROLLER':'MINIMA',{f:'var(--f-disp)',s:15,w:700})+t(right?x+14:x+44,128,right?'UNO R4 Minima':'UNO R4 Minima, peripheral',{s:10.5,op:.8})+t(right?x+14:x+44,334,'',{id:'st'+w,s:11.5})+'</g>';
+  h+='<g data-k="'+w+'reg" tabindex="0">'+t(right?x+14:x+44,228,'',{id:'rl'+w,s:10,op:.85})+cells(w,right?x+14:x+44,234)+'</g>';
+  lines.forEach(l=>{ const y=Y[l]; h+=pbox(w,l,bx,y)+'<path d="M'+(right?bx+30:px)+' '+y+' H'+(right?px:bx)+'" stroke="var(--pcbink)" stroke-width="2"/><rect x="'+(px-5)+'" y="'+(y-7)+'" width="10" height="14" fill="var(--ink)"/>'; });
+  h+='<rect x="'+(px-5)+'" y="'+(Y.gnd-7)+'" width="10" height="14" fill="var(--ink)"/>'+t(right?px-12:px+12,Y.gnd+4,'GND',{a:right?'end':'start',s:10,op:.8});
+  return h;
+}
+function imuBoard(){
+  const x=270,y=372,w=230,h=102;
+  let s='<g data-k="I" tabindex="0"><rect class="hl" x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="8" fill="var(--imupcb)" stroke="var(--imuedge)" stroke-width="2"/>'+
+    t(x+10,y+44,'IMU · LSM6DS3TR-C',{f:'var(--f-disp)',s:13.5,w:700})+t(x+w-10,y+44,'',{id:'ptrI',a:'end',s:10})+t(x+10,y+96,'',{id:'stI',s:11})+'</g>';
+  s+='<g data-k="Ireg" tabindex="0">'+t(x+10,y+58,'',{id:'rlI',s:10,op:.85})+cells('I',x+10,y+62)+'</g>';
+  [['sck',TAP.sck],['copi',TAP.copi],['cipo',TAP.cipo]].forEach(([l,xx])=>{ s+=pbox('I',l,xx-15,y+18)+'<rect x="'+(xx-5)+'" y="'+(y-5)+'" width="10" height="10" fill="var(--ink)"/>'; });
+  s+=pbox('I','csI',445,y+18)+'<rect x="455" y="'+(y-5)+'" width="10" height="10" fill="var(--ink)"/><rect x="'+(TAP.gnd-5)+'" y="'+(y-5)+'" width="10" height="10" fill="var(--ink)"/>';
+  return s;
+}
+function drawScene(){
+  let h='';
+  const wire=(l,d,wd=6)=>'<path class="w_'+l+'" d="'+d+'" stroke="'+LCOL[l]+'" stroke-width="'+wd+'" fill="none"/>';
+  const lbl={csP:'<tspan text-decoration="overline">CS</tspan>_MINIMA · D10',sck:'SCK · D13',copi:'COPI · D11  →',cipo:'←  CIPO · D12'};
+  ['csP','sck','copi','cipo'].forEach(l=>{
+    const y=Y[l];
+    h+='<g data-k="'+l+'" tabindex="0">'+wire(l,'M230 '+y+' H530')+
+      (TAP[l]?wire(l,vhop(TAP[l],y,372,[Y.copi,Y.cipo,Y.gnd,Y.csI].filter(v=>v>y)),5)+'<circle cx="'+TAP[l]+'" cy="'+y+'" r="4" fill="'+LCOL[l]+'"/>':'')+
+      '<rect x="230" y="'+(y-14)+'" width="300" height="28" fill="transparent"/>'+
+      t(240,y-9,lbl[l],{f:'var(--f-disp)',s:12.5,w:600,c:LCOL[l]})+t(482,y-9,'',{id:'tg_'+l,a:'middle',s:11,w:600,c:LCOL[l]})+'</g>';
+  });
+  h+='<g data-k="gnd" tabindex="0"><path class="hl" d="M230 '+Y.gnd+' H530 '+'" stroke="var(--muted)" stroke-width="4" fill="none"/><path d="'+vhop(TAP.gnd,Y.gnd,372,[Y.csI])+'" stroke="var(--muted)" stroke-width="4" fill="none"/><circle cx="'+TAP.gnd+'" cy="'+Y.gnd+'" r="4" fill="var(--muted)"/>'+
+    '<rect x="230" y="'+(Y.gnd-12)+'" width="300" height="24" fill="transparent"/>'+t(240,Y.gnd-8,'GND (shared)',{f:'var(--f-disp)',s:12.5,w:600,c:'var(--muted)'})+'</g>';
+  h+='<g data-k="csI" tabindex="0">'+wire('csI','M230 '+Y.csI+' H460 V372')+'<rect x="230" y="'+(Y.csI-12)+'" width="240" height="24" fill="transparent"/>'+
+    t(240,Y.csI-8,'',{f:'var(--f-disp)',s:12.5,w:600,c:LCOL.csI,id:'csIlab'})+t(425,Y.csI-8,'',{id:'tg_csI',s:11,w:600,c:LCOL.csI})+'</g>';
+  h+=board('C',20)+board('P',530)+imuBoard();
+  svg.innerHTML=h;
+  $('csIlab').innerHTML='<tspan text-decoration="overline">CS</tspan>_IMU · D9';
+  svg.querySelectorAll('[data-k]').forEach(g=>{
+    g.addEventListener('click',e=>{e.stopPropagation();select(g.dataset.k);});
+    g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();select(g.dataset.k);}});
+  });
+}
+const lvl=v=> v>=VIH?'HIGH': v<=VIL?'LOW':'UNDEFINED';
+function lineState(l){
+  const e=S.i*NS+NS-1, v=V.out[l][e];
+  if(l==='cipo'){ if(V.fight[S.i]) return {v,txt:'CONFLICT '+v.toFixed(1)+' V',mode:'fight'}; if(V.hiz[S.i]) return {v,txt:'Hi-Z, floating',mode:'hiz'}; }
+  return {v,txt:lvl(v)+' '+v.toFixed(1)+' V',mode:lvl(v)};
+}
+function updScene(){
+  const p=T.ph[S.i];
+  const set=(el,a)=>{for(const k in a)el.setAttribute(k,a[k]);};
+  LINES.forEach(l=>{
+    const s=lineState(l);
+    svg.querySelectorAll('.w_'+l).forEach(el=>set(el,{
+      opacity: s.mode==='HIGH'?1: s.mode==='LOW'?.3: s.mode==='hiz'?.55: .9,
+      'stroke-dasharray': (s.mode==='hiz'||s.mode==='fight'||s.mode==='UNDEFINED')?'8 6':'none',
+      stroke: (s.mode==='fight'||s.mode==='UNDEFINED')?'var(--warn)':LCOL[l]}));
+    $('tg_'+l).textContent=(l==='csP'||l==='csI') ? (p[l]===0 ? 'LOW · SELECTED' : 'HIGH · OFF') : s.txt;
+  });
+  // pin role boxes
+  const role=(w,l)=>{
+    if(w==='C') return l==='cipo'?['IN',null]:['OUT',p[l==='csP'?'csP':l==='csI'?'csI':l]];
+    const selected = w==='P'?p.csP===0:p.csI===0;
+    if(l==='csP'||l==='csI') return ['IN',null];
+    if(l==='cipo') return selected?['OUT',p.cipo[w]]:['Hi-Z',null];
+    return [selected?'IN':'ignore',null];
+  };
+  [['C',['csP','sck','copi','cipo','csI']],['P',['csP','sck','copi','cipo']],['I',['sck','copi','cipo','csI']]].forEach(([w,ls])=>{
+    ls.forEach(l=>{
+      const [r,val]=role(w,l), el=$('pb'+w+l); if(!el) return;
+      const driving = r==='OUT'&&val!=null;
+      const fightHere = l==='cipo'&&V.fight[S.i]&&w!=='C';
+      const base=w==='I'?'var(--imuedge)':'var(--pcbedge)';
+      set(el,{fill: fightHere?'var(--warn)': (driving&&(l==='cipo'||w==='C'))? COL[w] : base});
+      $('pt'+w+l).textContent= r==='OUT'&&val!=null? 'OUT '+val : r;
+    });
+  });
+  DEV.forEach(w=>{
+    const r=p.reg[w];
+    $('rl'+w).textContent=r.lab+(r.recv?': '+r.recv+' bit'+(r.recv>1?'s':'')+' received':'');
+    for(let k=0;k<8;k++){
+      $('rt'+w+k).textContent=r.cells[k];
+      const isRecv = r.recv>0 && k>=8-r.recv;
+      const other = w==='C'?(p.csI===0&&p.csP===0?'var(--warn)':p.csI===0?COL.I:COL.P):COL.C;
+      const base=w==='I'?'var(--imuedge)':'var(--pcbedge)';
+      set($('rc'+w+k),{fill: isRecv? (r.cells[k]==='?'?'var(--warn)':other) : base});
+    }
+    $('st'+w).textContent=p.st[w];
+  });
+  $('ptrI').textContent='ptr '+p.ptr;
+  svg.querySelectorAll('.hl').forEach(h=>h.classList.remove('sel'));
+  if(S.sel){const g=svg.querySelector('[data-k="'+S.sel+'"] .hl');if(g)g.classList.add('sel');}
+}
+
+/* ---------- inspector ---------- */
+function inspector(){
+  const p=T.ph[S.i], k=S.sel;
+  const kv=a=>'<div class="kv">'+a.map(([k,v])=>'<span>'+k+'</span><span>'+v+'</span>').join('')+'</div>';
+  const selList=[p.csP===0?'Minima':null,p.csI===0?'IMU':null].filter(Boolean).join(' + ')||'none';
+  let h;
+  if(!k) h='<h3>Inspector</h3><p>Pause anywhere, then tap a wire, a pin box, a shift register, or a board. The details follow you as you step.</p><p class="hint">Keyboard: space plays or pauses, arrow keys step.</p>';
+  else if(k==='csP'||k==='csI'){
+    const s=lineState(k), isP=k==='csP';
+    h='<h3>'+(isP?'CS_MINIMA':'CS_IMU')+' (chip select, active LOW)</h3>'+kv([['level',s.txt],['driven by','Controller, push-pull'],['selects',isP?'Minima':'IMU'],['currently selected',selList]])+
+      '<p>SPI has no addresses. Each peripheral gets its own CS wire, and LOW means "you, listen and drive CIPO." Adding a fourth device costs another controller pin and another wire.</p><p>Exactly one CS should be LOW at a time. The fault scenario shows what happens otherwise.</p>';
+  }
+  else if(k==='sck'){
+    const s=lineState('sck');
+    h='<h3>SCK, serial clock</h3>'+kv([['level',s.txt],['driven by','Controller only'],['idle level',MODE===3?'HIGH (mode 3)':'LOW (mode 0)'],['frequency',(S.F/1e6)+' MHz']])+
+      '<p>Every clock moves one bit in each direction. In mode 0 and mode 3 data is sampled on the rising edge and changed on the falling edge; the modes differ only in where SCK idles. The other two modes (1 and 2) sample on the opposite edge. Controller and peripheral must agree, and nothing on the bus checks that they do.</p>';
+  }
+  else if(k==='copi'){
+    const s=lineState('copi');
+    h='<h3>COPI, controller out / peripheral in (MOSI)</h3>'+kv([['level',s.txt],['driven by','Controller, push-pull'],['bit now',String(p.copi)],['heard by',selList]])+'<p>Only the controller drives this wire. Every peripheral is connected to it, but only a selected one shifts the bits in.</p>';
+  }
+  else if(k==='cipo'){
+    const s=lineState('cipo'), dv=Object.keys(p.cipo);
+    h='<h3>CIPO, controller in / peripheral out (MISO)</h3>'+kv([['state',s.txt],['driven by',dv.length?dv.map(d=>NAME[d]+' ('+p.cipo[d]+')').join(', '):'nobody'],['driver R',S.R+' Ω each']].concat(V.fight[S.i]?[['current',(VDD/(2*S.R)*1000).toFixed(0)+' mA'],['voltage','5 V × R/(R+R) = '+(VDD/2).toFixed(1)+' V']]:[]))+
+      '<p>The one shared wire that peripherals drive. A deselected peripheral must put its CIPO pin in high impedance so the selected one can drive it. With nobody driving, the wire floats and reads whatever charge is left on it.</p>'+(V.fight[S.i]?'<p><b>Contention.</b> Push-pull outputs are low-resistance switches to 5 V and to GND. With one high and one low, they form a divider and a near short circuit.</p>':'');
+  }
+  else if(k==='gnd') h='<h3>Shared ground</h3><p>Every voltage on the other five wires is measured against this one. All three boards must share it. At MHz clock rates it is also the return path for every edge, so a long, separate ground wire adds ringing.</p>';
+  else if(k==='C') h='<h3>Controller board</h3>'+kv([['state',p.st.C],['code line',p.cl+1]])+'<p>SPI.transfer(x) sends x and returns the byte that came back at the same time. You cannot receive without sending, so reads send dummy bytes. The controller sets the clock speed and mode with SPISettings, and must set CS itself with digitalWrite().</p>';
+  else if(k==='P') h='<h3>Minima peripheral</h3>'+kv([['selected',p.csP===0?'yes':'no'],['state',p.st.P]])+'<p>Unlike I²C, the Arduino SPI library on the R4 has no peripheral mode. Making a Minima act as an SPI peripheral needs register-level code: a pin interrupt on CS, an SPI receive interrupt, and loading the next transmit byte in time. The middle code panel shows that logic, not a library call you can paste.</p>';
+  else if(k==='I') h='<h3>IMU (LSM6DS3TR-C breakout)</h3>'+kv([['selected',p.csI===0?'yes':'no'],['state',p.st.I],['register pointer',p.ptr]])+'<p>The first byte after CS falls is the command: bit 7 = 1 for read, 0 for write, and the low 7 bits are the register address. The IMU then streams registers and auto-increments. The Adafruit breakout level-shifts its SPI lines for a 5 V controller; the bare sensor is not 5 V tolerant. CTRL3_C=0x44 enables register auto-increment; CTRL1_XL=0x40 enables 104 Hz acceleration at ±2 g. The 1–10 MHz clock choices are electrical-model experiments, not verified device operating rates.</p>';
+  else if(/reg$/.test(k)){
+    const w=k[0], r=p.reg[w];
+    h='<h3>'+NAME[w]+' shift register</h3>'+kv([['contents',r.cells.map(c=>c||'·').join(' ')],['bits received',r.recv+' of 8']])+'<p>SPI is two shift registers connected in a ring: controller MSB goes out on COPI into the peripheral\'s LSB, and peripheral MSB comes back on CIPO into the controller\'s LSB. Colored cells are bits that came from the other side. After 8 clocks the two bytes have traded places.</p>';
+  }
+  else if(k.startsWith('pin:')){
+    const [,w,l]=k.split(':'), txt=$('pt'+w+l)?$('pt'+w+l).textContent:'';
+    h='<h3>'+NAME[w]+' pin: '+l.toUpperCase().replace('CSP','CS_MINIMA').replace('CSI','CS_IMU')+'</h3>'+kv([['role now',txt]])+'<p>SPI pins are push-pull: an OUT pin actively drives HIGH or LOW through a small resistance. IN means the pin only listens. Hi-Z means the output driver is switched off, so the pin neither drives nor loads the wire. A peripheral\'s CIPO pin must be Hi-Z whenever its CS is HIGH.</p>';
+  }
+  $('insp').innerHTML=h;
+}
+function select(k){S.sel=(S.sel===k)?null:k;updScene();inspector();}
+svg.addEventListener('click',()=>{S.sel=null;updScene();inspector();});
+
+/* ---------- caption ---------- */
+function fmtT(s){return s<1e-6?(s*1e9).toFixed(0)+' ns':(s*1e6).toFixed(2)+' µs';}
+function updNow(){
+  const p=T.ph[S.i], w=V.warn[S.i];
+  $('now').className='panel now'+(w?' warnstate':'');
+  $('now').innerHTML='<span class="tag">'+p.tag+'</span><span class="ttl">'+$('scn').selectedOptions[0].textContent+' · '+p.title+'</span><p class="note">'+p.note+'</p>'+(w?'<p class="warnline">⚠ '+w+'</p>':'');
+  $('tcount').textContent='step '+(S.i+1)+'/'+T.ph.length+' · t = '+fmtT(S.i*V.half);
+}
+
+/* ---------- waveform ---------- */
+const cv=$('wave');
+function drawWave(){
+  const n=T.ph.length, W=LM+n*U+10, H=230, dpr=window.devicePixelRatio||1;
+  cv.width=W*dpr; cv.height=H*dpr; cv.style.width=W+'px'; cv.style.height=H+'px';
+  const g=cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W,H);
+  const names={csP:'CS_MIN',csI:'CS_IMU',sck:'SCK',copi:'COPI',cipo:'CIPO'};
+  const cols={csP:css('--cs'),csI:css('--cs'),sck:css('--sck'),copi:css('--copi'),cipo:css('--cipo')};
+  const hh=28, gap=44, mut=css('--muted'), ink=css('--ink'), warnc=css('--warn'), line=css('--line');
+  g.font='600 11px '+css('--f-disp');
+  LINES.forEach((l,ri)=>{
+    const base=34+ri*gap, a=V.out[l];
+    g.fillStyle=cols[l]; g.fillText(names[l],6,base-hh/2+4);
+    if(l==='csP'||l==='csI'){const ybar=base-hh/2-7;g.lineWidth=1.2;g.fillRect(6,ybar,g.measureText('CS').width,1.5);}
+    g.strokeStyle=line; g.lineWidth=1; g.setLineDash([2,4]); g.beginPath(); g.moveTo(LM,base); g.lineTo(W-10,base); g.stroke(); g.setLineDash([]);
+    for(let k=0;k<n;k++){
+      const special = l==='cipo'&&(V.hiz[k]||V.fight[k]);
+      g.strokeStyle = l==='cipo'&&V.fight[k]?warnc:cols[l]; g.lineWidth=2; g.setLineDash(l==='cipo'&&V.hiz[k]?[3,3]:[]);
+      g.beginPath();
+      for(let j=0;j<NS;j++){ const idx=k*NS+j, x=LM+(idx+1)*U/NS, y=base-a[idx]/VDD*hh; j?g.lineTo(x,y):g.moveTo(LM+k*U,y); }
+      g.stroke(); g.setLineDash([]);
+      if(special&&V.hiz[k]){ g.fillStyle=mut; g.globalAlpha=.12; g.fillRect(LM+k*U,base-hh,U,hh); g.globalAlpha=1; }
+    }
+  });
+  T.ph.forEach((p,k)=>{ if(p.sample){ const x=LM+k*U; g.strokeStyle=V.fight[k]?warnc:mut; g.lineWidth=1; g.beginPath(); g.moveTo(x,H-14); g.lineTo(x,H-4); g.stroke(); }});
+  const xc=LM+(S.i+1)*U;
+  g.fillStyle=css('--panel'); g.globalAlpha=.6; g.fillRect(xc,0,W-xc,H); g.globalAlpha=1;
+  g.strokeStyle=ink; g.lineWidth=1.5; g.beginPath(); g.moveTo(xc,0); g.lineTo(xc,H); g.stroke();
+  const dec=$('decode'); dec.style.width=(n*U)+'px';
+  dec.innerHTML='<span style="position:absolute;left:-54px;top:6px;font:600 10px var(--f-disp);color:var(--copi)">COPI →</span><span style="position:absolute;left:-54px;top:32px;font:600 10px var(--f-disp);color:var(--cipo)">← CIPO</span>'+T.fr.map((f,j)=>'<div class="blk '+f.cls+(S.i>=f.b&&S.i<f.e?' on':'')+'" tabindex="0" data-j="'+j+'" style="top:'+(f.row?28:2)+'px;left:'+(f.b*U)+'px;width:'+((f.e-f.b)*U-2)+'px" title="'+(f.row?'CIPO: ':'COPI: ')+f.lab+'">'+f.lab+'</div>').join('');
+  const sw=$('scopewrap'); if(xc<sw.scrollLeft+60||xc>sw.scrollLeft+sw.clientWidth-60) sw.scrollLeft=Math.max(0,xc-sw.clientWidth/2);
+}
+cv.addEventListener('click',e=>{const r=cv.getBoundingClientRect();const k=Math.floor((e.clientX-r.left-LM)/U);if(k>=0&&k<T.ph.length){pause();go(k);}});
+$('decode').addEventListener('click',e=>{const b=e.target.closest('.blk');if(b){pause();go(T.fr[+b.dataset.j].b);}});
+$('decode').addEventListener('keydown',e=>{const b=e.target.closest('.blk');if(b&&(e.key==='Enter'||e.key===' ')){e.preventDefault();pause();go(T.fr[+b.dataset.j].b);}});
+
+/* ---------- code panels ---------- */
+function updCode(){
+  const p=T.ph[S.i];
+  document.querySelectorAll('#cCode .ln').forEach(l=>l.classList.toggle('on',+l.dataset.i===p.cl));
+  document.querySelectorAll('#pCode .ln').forEach(l=>l.classList.toggle('on',+l.dataset.i===p.pl));
+  const loopL=L(P_CODE,'void loop');
+  $('cStat').textContent='Line '+(p.cl+1)+'. '+(/transfer/.test(C_CODE[p.cl]||'')?'SPI.transfer() blocks for 8 clocks and returns the byte received.':'');
+  $('pStat').textContent= p.csP!==0&&p.pl===loopL?'Not selected. loop() runs undisturbed.': p.pl===loopL?'Selected. SPI hardware shifts bits while loop() runs.':'An interrupt is running line '+(p.pl+1)+'.';
+  $('rmap').innerHTML='<tr><th></th><th>reg</th><th>name</th><th>value</th></tr>'+RMAP.map((r,i)=>'<tr class="'+(i===p.il?'on':'')+'"><td class="ptr">'+(r[0]===p.ptr&&(S.scn==='imu'||S.scn==='fault')?'▶':'')+'</td><td>'+r[0]+'</td><td>'+r[1]+'</td><td>'+r[2]+'</td></tr>').join('');
+  $('iStat').textContent= p.csI!==0?'CS_IMU is HIGH: the IMU ignores SCK and COPI and keeps CIPO in high impedance.': p.il>=0?'Sending register '+RMAP[p.il][0]+'.':'Receiving the command byte.';
+}
+
+/* ---------- readout ---------- */
+function updReadout(){
+  const tau=S.R*S.C, tr=2.2*tau, half=1/(2*S.F);
+  const frac=tr/half;
+  let s='τ = R<sub>out</sub>·C = '+S.R+' Ω × '+(S.C*1e12)+' pF = '+(tau*1e9).toFixed(1)+' ns<br>';
+  s+='edge time (10→90%) = 2.2 τ = '+(tr*1e9).toFixed(1)+' ns, half clock period = '+(half*1e9).toFixed(0)+' ns → edge uses '+(frac*100).toFixed(0)+'% of the half period: '+(frac<0.25?'<span class="pass">clean</span>':frac<0.5?'<span class="fail">marginal</span>':'<span class="fail">too slow</span>')+'<br>';
+  s+='compare I²C: a 4.7 kΩ pull-up with the same C gives τ = '+(4700*S.C*1e9).toFixed(0)+' ns, about '+Math.round(4700/S.R)+'× slower rising edges.<br>';
+  s+='contention current if two drivers fight: 5 V / ('+S.R+' Ω + '+S.R+' Ω) = '+(VDD/(2*S.R)*1000).toFixed(0)+' mA'+(S.F>1e6?'<br><span class="fail">Sensor timing note:</span> this RC model does not validate the breakout or sensor maximum SPI clock frequency.':'');
+  s+='<br><span class="hint">Not modeled: wire inductance and ringing, which dominate long jumpers at several MHz.</span>';
+  $('readout').innerHTML=s;
+}
+
+/* ---------- control ---------- */
+function go(i,preview=false){S.previewPending=preview;S.i=Math.max(0,Math.min(T.ph.length-1,i));updScene();updNow();drawWave();updCode();inspector();}
+// Position the new scenario at an informative data bit rather than its identical idle frame.
+// The whole waveform is regenerated immediately; playback is not required.
+function scenarioPreview(){const k=T.ph.findIndex(p=>p.tag==='D5' && p.sck===1);return k>=0?k:Math.min(2,T.ph.length-1);}
+function rebuild(keep){
+  MODE=+$('mode').value;
+  T=build(S.scn); simulate();
+  const sub={}; sub[L(C_CODE,'SPISettings')]='SPISettings cfg('+S.F+', MSBFIRST, SPI_MODE'+MODE+');';
+  let bug=null;
+  if(S.scn==='fault'){ bug=L(C_CODE,'digitalWrite(CS_MINIMA, HIGH)',2); sub[bug]='  // BUG: forgot digitalWrite(CS_MINIMA, HIGH);'; }
+  renderCode($('cCode'),C_CODE,sub,bug);
+  renderCode($('pCode'),P_CODE);
+  updReadout(); go(keep?Math.min(S.i,T.ph.length-1):scenarioPreview(),!keep);
+}
+function tick(){ if(S.i>=T.ph.length-1){pause();return;} go(S.i+1); S.timer=setTimeout(tick,+$('spd').value); }
+function play(){ if(S.previewPending||S.i>=T.ph.length-1) go(0); S.playing=true; $('play').textContent='Pause'; S.timer=setTimeout(tick,+$('spd').value); }
+function pause(){ S.playing=false; clearTimeout(S.timer); $('play').textContent='Play'; }
+$('play').onclick=()=>S.playing?pause():play();
+$('fwd').onclick=()=>{pause();go(S.i+1);};
+$('back').onclick=()=>{pause();go(S.i-1);};
+$('reset').onclick=()=>{pause();go(0);};
+$('scn').onchange=e=>{pause();S.scn=e.target.value;rebuild(false);};
+$('mode').onchange=()=>{pause();rebuild(true);};
+$('selF').onchange=e=>{S.F=+e.target.value;rebuild(true);};
+$('selC').onchange=e=>{S.C=+e.target.value;rebuild(true);};
+$('selR').onchange=e=>{S.R=+e.target.value;rebuild(true);};
+document.addEventListener('keydown',e=>{
+  if(e.target.closest('select,button,[data-k],.blk'))return;
+  if(e.key===' '){e.preventDefault();S.playing?pause():play();}
+  else if(e.key==='ArrowRight'){pause();go(S.i+1);}
+  else if(e.key==='ArrowLeft'){pause();go(S.i-1);}
+});
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',()=>drawWave());
+new MutationObserver(()=>drawWave()).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+
+drawScene();
+S.sel='cipo';
+rebuild(false);
+// Preview is informative; Play and Restart begin at the first protocol state.
+})();
+</script>
+
+</body>
+</html>

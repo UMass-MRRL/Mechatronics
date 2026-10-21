@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="author" content="Frank C. Sup IV">
+<meta name="description" content="UART baud-rate mismatch teaching simulation for MIE 443 Mechatronics, UMass Amherst.">
+<title>UART Baud-Rate Inspector</title>
+<style>
+:root{--brand:#881c1c;--bg:#edf0f2;--panel:#fff;--ink:#19212b;--muted:#586675;--line:#cad2dc;--tx:#205c9b;--rx:#a15d0f;--bad:#c52b26;--good:#157847;--soft:#f3f6f9}
+@media(prefers-color-scheme:dark){:root{--bg:#11161c;--panel:#1b222b;--ink:#f0f2f5;--muted:#a7b4c2;--line:#3b4958;--tx:#7dbbff;--rx:#ffb859;--bad:#ff857f;--good:#77d7aa;--soft:#222d39;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
+.brand{background:var(--brand);color:white;padding:11px max(18px,calc((100vw - 1180px)/2));display:flex;gap:8px 28px;flex-wrap:wrap;justify-content:space-between;font-size:14px}
+main{max-width:1180px;margin:auto;padding:18px 14px 42px;display:grid;gap:14px}
+h1{font-size:29px;letter-spacing:-.025em;margin:0}
+h2{margin:0 0 10px;font-size:14px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+p{margin:7px 0 0}
+.head{border-bottom:3px solid var(--brand);padding:0 0 13px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:15px}
+.controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px}
+.control{display:grid;align-content:start;gap:6px}
+label{font-weight:650;font-size:13px}
+select,input,button{font:inherit;color:var(--ink);background:var(--soft);border:1px solid var(--line);border-radius:6px;padding:7px}
+input[type=range]{width:100%;padding:0;accent-color:var(--brand)}
+input[type=text]{width:145px;font-family:ui-monospace,Consolas,monospace;letter-spacing:.1em}
+small,.note{color:var(--muted);font-size:13px}
+.buttons{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+button{cursor:pointer;padding:6px 11px}
+button:hover{border-color:var(--tx)}button.primary{color:white;background:var(--brand);border-color:var(--brand)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:9px}
+.metric{border:1px solid var(--line);border-radius:6px;padding:11px;min-width:0;background:var(--soft)}
+.metric b{display:block;letter-spacing:.02em;font-size:12px;color:var(--muted)}
+.metric strong{display:block;font:650 20px/1.4 ui-monospace,SFMono-Regular,monospace;word-wrap:break-word}
+.metric strong.good{color:var(--good)}.metric strong.bad{color:var(--bad)}
+.viewport{overflow-x:auto;max-width:100%;border:1px solid var(--line);border-radius:7px;background:var(--panel)}
+canvas{display:block;width:1200px;height:295px;max-width:none}
+.row{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;margin:8px 0}
+.swatch{display:inline-block;width:15px;height:3px;margin-right:5px;vertical-align:middle;background:var(--tx)}
+.swatch.rx{background:var(--rx)}
+.tblwrap{overflow-x:auto}table{width:100%;border-collapse:collapse;font:13px/1.4 ui-monospace,Consolas,monospace}th,td{padding:7px 9px;text-align:center;border-bottom:1px solid var(--line);white-space:nowrap}th{color:var(--muted)}td.bad{color:var(--bad);font-weight:700}
+.warn{color:var(--bad)}.pass{color:var(--good)}
+footer{font-size:12px;color:var(--muted);border-top:3px solid var(--brand);padding-top:12px}
+@media(max-width:550px){h1{font-size:24px}.brand{font-size:12px}}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div class="brand"><b>UMASS AMHERST</b><span>Mechanical and Industrial Engineering · MIE 443 Mechatronics</span></div>
+<main>
+<div class="head">
+<h1>UART / Serial Baud-Rate Inspector</h1>
+<p>Transmit the same byte at different baud rates. The <b>wire bits do not change</b>, but their duration changes. A receiver configured for the wrong baud rate samples at different points and can decode the wrong data.</p>
+<p class="note"><b>Educational model only:</b> Idealized 8N1 UART receiver samples, not an implementation of a particular UART peripheral or a hardware diagnostic. Real oversampling, resynchronization, clock error, noise and line-driver voltage levels are not modeled.</p>
+</div>
+<div class="panel">
+<h2>Set up the transmission</h2>
+<div class="controls">
+<div class="control"><label for="bits">Transmitted data, 8 bits (MSB shown)</label><input id="bits" type="text" maxlength="8" inputmode="numeric" value="00110000" spellcheck="false" aria-describedby="bitHelp"><small id="bitHelp">Example: 00110000 = 0x30. UART sends bit 0 first.</small><small id="bitError" role="alert" style="color:var(--bad)" hidden>Enter exactly eight binary digits (0 or 1). The simulation is disabled until the entry is valid.</small></div>
+<div class="control"><label for="tx">Transmitter baud rate</label><select id="tx"><option>2400</option><option>4800</option><option selected>9600</option><option>19200</option><option>38400</option><option>57600</option><option>115200</option></select><small id="txTime">One TX bit = 104.17 µs</small></div>
+<div class="control"><label for="ratio">Receiver speed: <span id="ratioOut">1.00×</span> transmitter</label><input id="ratio" type="range" min="0.5" max="2" value="1" step="0.01"><small>Receiver baud = <b id="rxBaud">9600</b>. Move the slider to create mismatch.</small></div>
+</div>
+<div class="buttons" aria-label="Baud mismatch presets"><button data-ratio="1">Matched</button><button data-ratio="1.05">Receiver +5%</button><button data-ratio="2">Receiver 2× fast</button><button data-ratio="0.5">Receiver 2× slow</button><button id="play" class="primary">Animate sampling</button></div>
+</div>
+<div class="panel">
+<h2>What does the receiver decode?</h2>
+<p class="note"><b>Interpretation:</b> This is a simulated center-sampling result for one frame, not an assurance about bytes received by a real UART. A HIGH stop sample alone does not confirm data integrity.</p>
+<div class="grid">
+<div class="metric"><b>Transmitted byte</b><strong id="txBits">00110000</strong><small id="txHex">0x30</small></div>
+<div class="metric"><b>Receiver sampled data (MSB order)</b><strong id="rxBits">00110000</strong><small id="rxHex">0x30</small></div>
+<div class="metric"><b>Data comparison</b><strong id="result">8/8 bits</strong><small id="resultNote">Same data</small></div>
+<div class="metric"><b>Stop-bit check (8N1)</b><strong id="framing">HIGH ✓</strong><small id="framingNote">Framing check passed</small></div>
+</div>
+</div>
+<div class="panel">
+<h2>Physical TX waveform and receiver sample instants</h2>
+<p class="note">Three back-to-back copies of the same 8N1 frame are sent for context. The receiver locks onto the first falling start edge, then samples the 8 data-bit centers and the stop-bit center using <i>its own</i> clock. This models one attempted frame decode, not a complete UART state machine.</p>
+<div class="row"><span><span class="swatch"></span>TX signal on wire</span><span><span class="swatch rx"></span>RX sample moments and sampled values</span><span class="warn">Red = data-bit mismatch or framing error</span></div>
+<div class="viewport" id="graphwrap"><canvas id="wave" width="1200" height="295" role="img" aria-label="UART transmitter waveform with receiver sample points and start data stop bit regions"></canvas></div>
+<p class="note" id="caption">Each 8N1 frame has 1 start bit (LOW), 8 data bits (LSB first), and 1 stop bit (HIGH).</p>
+</div>
+<div class="panel">
+<h2>Receiver sampling details</h2>
+<div class="tblwrap"><table><thead><tr><th>Sample</th><th>RX time (µs)</th><th>TX bit at sample</th><th>Observed</th><th>Expected</th></tr></thead><tbody id="samples"></tbody></table></div>
+</div>
+<div class="panel">
+<h2>Try this</h2>
+<ol>
+<li>Start with matching 9,600 baud. All eight data samples land near the centers of the transmitted bits.</li>
+<li>Set the receiver to twice the baud rate. It samples faster, sometimes sampling the same transmitted bit multiple times. What binary value does it reconstruct?</li>
+<li>Set the receiver to half the baud rate. Its later samples extend into the next frame. Why can an incorrect byte sometimes still pass a stop-bit check?</li>
+<li>Try a 5% error. Notice how sample timing drift accumulates from bit 0 to bit 7. Does the particular data pattern affect when an error becomes visible?</li>
+<li>Change the transmitter from 9,600 to 115,200 baud while keeping the receiver/transmitter ratio unchanged. The absolute pulse widths shrink, but the decoding outcome does not change in this idealized model.</li>
+</ol>
+<p class="note"><b>Assumptions:</b> 8 data bits, no parity, 1 stop bit (8N1); both ends share a reference HIGH/LOW voltage and agree on polarity; an ideal noiseless signal; perfect start-edge detection; center-of-bit sampling with a fixed receiver period; no oversampling, jitter, buffering, synchronizers, or baud-rate estimation. Baud rate alone does not change the TX bit sequence, and a framing check is not a data-integrity check.</p>
+</div>
+<footer><p>Frank C. Sup IV · MIE 443 Mechatronics · University of Massachusetts Amherst · October 2026. Developed with AI assistance under the author's direction. The author is responsible for the content. Theoretical teaching simulation, not hardware validation.</p></footer>
+</main>
+<script>
+(()=>{
+/* EDUCATIONAL UART MODEL: 8N1 line transitions and one center-sampling
+   receiver decode with a single detected start edge. The receiver does not
+   implement oversampling, start-bit rejection, parity, error recovery or a
+   physical serial transceiver. Baud mismatch changes sample instants, not TX bits. */
+'use strict';
+const $=id=>document.getElementById(id), cv=$('wave'),ctx=cv.getContext('2d');
+let count=9,timer=null;
+const colors=()=>{const css=getComputedStyle(document.documentElement);return {ink:css.getPropertyValue('--ink').trim(),muted:css.getPropertyValue('--muted').trim(),line:css.getPropertyValue('--line').trim(),tx:css.getPropertyValue('--tx').trim(),rx:css.getPropertyValue('--rx').trim(),bad:css.getPropertyValue('--bad').trim(),panel:css.getPropertyValue('--panel').trim(),good:css.getPropertyValue('--good').trim()};};
+function state(){
+ const text=$('bits').value.trim();const valid=/^[01]{8}$/.test(text);
+ $('bits').setCustomValidity(valid?'':'Enter exactly eight binary digits, 0 or 1.');
+ if(!valid)return {valid:false};
+ const bits=text.split('').reverse().map(Number),TX=Number($('tx').value),ratio=Number($('ratio').value),RX=TX*ratio,tbit=1e6/TX,rbit=1e6/RX,tstart=2*tbit;
+ const txData=bits.map((b,i)=>({label:'D'+i,bit:b}));
+ const frame=[{label:'START',bit:0},...txData,{label:'STOP',bit:1}];
+ const level=t=>{if(t<tstart)return 1;const q=Math.floor((t-tstart)/tbit);if(q<0||q>=30)return 1;return frame[q%10].bit;};
+ const samples=Array.from({length:9},(_,i)=>{const t=tstart+(1.5+i)*rbit,bit=level(t);return {i,t,bit,expected:i===8?1:bits[i],txIndex:Math.floor((t-tstart)/tbit)};});
+ const received=samples.slice(0,8).map(s=>s.bit).reverse().join(''),txStr=bits.slice().reverse().join('');
+ const errors=samples.slice(0,8).filter(s=>s.bit!==s.expected).length,stop=samples[8].bit;
+ return {valid,TX,RX,ratio,tbit,rbit,tstart,frame,level,samples,received,txStr,errors,stop};
+}
+function update(){
+ const s=state();
+ $('bits').setAttribute('aria-invalid',s.valid?'false':'true');
+ $('bitError').hidden=s.valid;
+ if(!s.valid){
+   for(const id of ['txBits','txHex','rxBits','rxHex','result','framing']) $(id).textContent='—';
+   $('result').className='';$('framing').className='';
+   $('resultNote').textContent='Invalid input';$('framingNote').textContent='No frame decoded';
+   $('samples').replaceChildren();
+   $('caption').textContent='Simulation unavailable until exactly eight binary digits are entered.';
+   const dpr=window.devicePixelRatio||1;
+   cv.width=Math.round(1200*dpr);cv.height=Math.round(295*dpr);
+   cv.style.width='1200px';cv.style.height='295px';
+   ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,1200,295);
+   ctx.fillStyle=colors().bad;ctx.font='18px system-ui';
+   ctx.fillText('Invalid binary byte: enter exactly eight 0/1 digits.',55,145);
+   return;
+ }
+ $('ratioOut').textContent=s.ratio.toFixed(2)+'×';$('rxBaud').textContent=Math.round(s.RX).toLocaleString();$('txTime').textContent='One TX bit = '+s.tbit.toFixed(2)+' µs';
+ const toHex=b=>'0x'+parseInt(b,2).toString(16).toUpperCase().padStart(2,'0');
+ $('txBits').textContent=s.txStr;$('txHex').textContent=toHex(s.txStr);
+ $('rxBits').textContent=s.received;$('rxHex').textContent=toHex(s.received)+' (sampled, not guaranteed valid)';
+ const result=$('result');result.textContent=(8-s.errors)+'/8 bits';result.className=s.errors?'bad':'good';$('resultNote').textContent=s.errors?s.errors+' data bit(s) differ from transmitted byte':'Data bits agree';
+ const fr=$('framing');fr.textContent=s.stop?'HIGH ✓':'LOW ✕';fr.className=s.stop?'good':'bad';$('framingNote').textContent=s.stop?'Stop sample HIGH, no framing error flagged':'Framing error: stop sample LOW';
+ $('caption').textContent='TX: '+s.TX.toLocaleString()+' baud ('+s.tbit.toFixed(1)+' µs/bit). RX: '+Math.round(s.RX).toLocaleString()+' baud ('+s.rbit.toFixed(1)+' µs/sample bit). Mismatch '+(100*(s.ratio-1)).toFixed(0)+'%. Data may be wrong even when stop reads HIGH.';
+ $('samples').innerHTML=s.samples.map(o=>{const miss=o.bit!==o.expected;const tag=o.i===8?'STOP':'D'+o.i;
+ const which=o.txIndex<0?'idle':o.txIndex>=30?'idle':s.frame[o.txIndex%10].label+(o.txIndex>=10?' (next frame)':'');
+ return '<tr><td>'+tag+'</td><td>'+o.t.toFixed(1)+'</td><td>'+which+'</td><td class="'+(miss?'bad':'')+'">'+o.bit+'</td><td>'+o.expected+'</td></tr>';}).join('');
+ draw(s);
+}
+function draw(s){
+ const C=colors(),W=1200,H=295,dpr=window.devicePixelRatio||1;cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);cv.style.width=W+'px';cv.style.height=H+'px';ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,W,H);
+ const x0=58,x1=W-27,yHi=104,yLow=197,yMid=151,tEnd=Math.max(s.tstart+30*s.tbit,s.samples[8].t+1.5*s.rbit);
+ const x=t=>x0+(t/tEnd)*(x1-x0);ctx.font='12px system-ui';ctx.textAlign='left';ctx.fillStyle=C.muted;
+ ctx.fillText('HIGH',8,yHi+4);ctx.fillText('LOW',18,yLow+4);
+ ctx.fillText('TX time in microseconds →',60,20);
+ for(let j=0;j<=30;j++){
+ const a=s.tstart+j*s.tbit,px=x(a);
+ ctx.strokeStyle=C.line;ctx.lineWidth=j%10===0?1.3:.5;ctx.setLineDash(j%10===0?[6,4]:[2,4]);ctx.beginPath();ctx.moveTo(px,48);ctx.lineTo(px,236);ctx.stroke();ctx.setLineDash([]);
+ if(j<10){const b=s.frame[j],mid=x(a+s.tbit/2);if(mid>70&&mid<x1-5){ctx.fillStyle=C.muted;ctx.textAlign='center';ctx.font='11px system-ui';ctx.fillText(b.label==='START'?'S':b.label==='STOP'?'P':'D'+(j-1),mid,57);ctx.fillText(String(b.bit),mid,76);}}
+ if(j%10===0 && j<30){ctx.textAlign='left';ctx.fillStyle=C.muted;ctx.fillText('Frame '+(j/10+1),px+3,43);}
+ }
+ ctx.strokeStyle=C.line;ctx.setLineDash([2,5]);ctx.beginPath();ctx.moveTo(x0,yHi);ctx.lineTo(x1,yHi);ctx.moveTo(x0,yLow);ctx.lineTo(x1,yLow);ctx.stroke();ctx.setLineDash([]);
+ ctx.strokeStyle=C.tx;ctx.lineWidth=3;ctx.beginPath();let last=null;
+ const transitions=[0,s.tstart];for(let k=1;k<=30;k++)transitions.push(s.tstart+k*s.tbit);transitions.push(tEnd);
+ for(let k=0;k<transitions.length-1;k++){
+ const a=transitions[k],b=transitions[k+1],y=s.level((a+b)/2)?yHi:yLow;
+ if(k===0)ctx.moveTo(x(a),y);else{ctx.lineTo(x(a),last);ctx.lineTo(x(a),y);}ctx.lineTo(x(b),y);last=y;
+ }ctx.stroke();
+ ctx.textAlign='center';
+ s.samples.forEach((o,j)=>{
+ const px=x(o.t),py=o.bit?yHi:yLow,miss=o.bit!==o.expected;
+ ctx.strokeStyle=miss?C.bad:C.rx;ctx.globalAlpha=j<count?1:.15;ctx.lineWidth=1.2;ctx.setLineDash([4,5]);ctx.beginPath();ctx.moveTo(px,82);ctx.lineTo(px,236);ctx.stroke();ctx.setLineDash([]);
+ ctx.fillStyle=miss?C.bad:C.rx;ctx.beginPath();ctx.arc(px,py,4.5,0,2*Math.PI);ctx.fill();
+ ctx.fillText(j===8?'stop':('D'+j),px,252+(j%2)*16);
+ ctx.globalAlpha=1;
+ });
+ for(let j=0;j<=6;j++){const val=j*(tEnd/6);ctx.textAlign='center';ctx.fillStyle=C.muted;ctx.font='11px system-ui';ctx.fillText(val.toFixed(0),x(val),289);}
+ ctx.textAlign='right';ctx.fillText('RX samples ↓',x1,22);
+}
+function cancel(){if(timer!==null){clearInterval(timer);timer=null;}$('play').textContent='Animate sampling';}
+function controlChanged(){cancel();count=9;update();}
+$('bits').addEventListener('input',controlChanged);$('tx').addEventListener('change',controlChanged);$('ratio').addEventListener('input',controlChanged);
+document.querySelectorAll('[data-ratio]').forEach(b=>b.addEventListener('click',()=>{$('ratio').value=b.dataset.ratio;controlChanged();}));
+$('play').addEventListener('click',()=>{
+ if(!state().valid)return;
+ if(timer!==null){cancel();count=9;update();return;}
+ count=0;update();$('play').textContent='Stop animation';timer=setInterval(()=>{count++;update();if(count>=9){cancel();}},500);
+});
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',()=>update());
+update();
+})();
+</script>
+</body>
+</html>

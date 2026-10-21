@@ -46,6 +46,8 @@ button.primary{background:var(--ink);color:var(--panel);border-color:var(--ink);
 .spacer{flex:1}
 .main{display:grid;grid-template-columns:minmax(0,370px) minmax(0,1fr);gap:14px;align-items:start}
 @media (max-width:900px){.main{grid-template-columns:1fr}}
+/* wide screens: the motor view follows the controls as you scroll, and scrolls itself if taller than the window */
+@media (min-width:901px){.main>.stage{position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px);max-height:calc(100vh - 24px);overflow-y:auto;overscroll-behavior:contain}}
 .grp{border-top:1px solid var(--line);padding-top:10px;margin-top:10px}
 .grp:first-of-type{border-top:0;margin-top:0;padding-top:0}
 .grp h3{font-family:var(--f-disp);font-weight:600;font-size:1rem;margin:0 0 6px}
@@ -54,7 +56,7 @@ button.primary{background:var(--ink);color:var(--panel);border-color:var(--ink);
 .knob label i{font-family:var(--f-mono);font-style:normal;color:var(--cu);margin-right:4px}
 .knob input[type=range]{grid-column:1/-1;width:100%;accent-color:var(--cu)}
 .knob input[type=number]{width:84px;padding:3px 6px;font-family:var(--f-mono);font-size:.82rem;text-align:right}
-.knob .u{font-family:var(--f-mono);font-size:.78rem;color:var(--muted)}
+.knob .u{font-family:var(--f-mono);font-size:.78rem;color:var(--muted);word-break:break-all;line-height:1.15}
 .knob select{grid-column:2/4;padding:3px 6px}
 .derived{font-family:var(--f-mono);font-size:.8rem;color:var(--muted);margin:2px 0 0}
 .views{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.35fr);gap:14px}
@@ -115,6 +117,11 @@ button.primary{background:var(--brand)!important;border-color:var(--brand)!impor
 .scope p{margin:0}
 details.assume-wrap summary{cursor:pointer;font-family:var(--f-disp);font-weight:600;font-size:.85rem;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}
 details.assume-wrap[open] summary{margin-bottom:8px}
+
+/* Publication notes should remain visible alongside numerical results. */
+.model-note{margin:10px 0;background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--brand);border-radius:0 6px 6px 0;padding:10px 13px;font-size:.84rem;line-height:1.48;color:var(--ink)}
+.model-note b{color:var(--brandfg)}
+.model-note a{color:var(--brandfg)}
 </style>
 </head>
 <body>
@@ -123,12 +130,12 @@ details.assume-wrap[open] summary{margin-bottom:8px}
 <div class="wrap">
   <header>
     <h1>DC Motor Designer</h1>
-    <p class="sub">Change the winding, geometry, magnets, gearing, and load of a brushed DC motor. Every number and every curve on this page comes from the equations shown when you tap a part. The drawings are to scale.</p><p class="sub"><b>How to use:</b> pick a starting design, press <i>Pin as reference</i>, then change one knob at a time and read the % change on each value.</p>
+    <p class="sub">Change the winding, geometry, magnets, gearing, and load of a brushed DC motor. Outputs follow the documented idealized equations. Click a component or calculated value to inspect the model. Scale bars represent selected dimensions; internal construction and proportions are schematic, not manufacturing drawings.</p><p class="sub"><b>How to use:</b> pick a starting design, press <i>Pin as reference</i>, then change one knob at a time and read the % change on each value.</p>
   </header>
 
   <div class="scope" role="note" aria-label="What this model is">
-    <p><b>Good for:</b> seeing which design choices matter and why, comparing two designs, and checking your own hand calculations from the lecture equations.</p>
-    <p><b>Not for:</b> predicting a real motor's numbers. Real motors have iron that saturates, flux leakage, brush and iron losses, and they heat up. They make less torque and run hotter than this page shows.</p>
+    <p><b>Good for:</b> theoretical exploration of how winding, geometry, magnet properties, voltage, current control, gearing, and load affect motor performance. Voltage and current are model inputs, not limits of a particular driver.</p>
+    <p><b>Not for:</b> rated power, safe stall duration, component selection, or predictions for a specific purchased motor. This idealized model omits important saturation, leakage, brush-contact, commutation, and temperature-coupled effects. Presets represent <i>approximate sizes and assumptions</i>, not calibrated products.</p>
   </div>
 
   <div class="panel bar">
@@ -153,8 +160,8 @@ details.assume-wrap[open] summary{margin-bottom:8px}
 
   <div class="main">
     <div class="panel" id="knobs"></div>
-    <div class="panel">
-      <h2>The motor, to scale</h2>
+    <div class="panel stage">
+      <h2>Motor geometry (dimension-scaled schematic)</h2>
       <div class="views">
         <div><svg class="v" id="endv" viewBox="0 0 320 320" role="img" aria-label="End cross-section of the motor"></svg><p class="cap" id="endcap"></p></div>
         <div><svg class="v" id="sidev" viewBox="0 0 440 300" role="img" aria-label="Side view of motor, gearhead and flywheel"></svg><p class="cap" id="sidecap"></p></div>
@@ -165,8 +172,9 @@ details.assume-wrap[open] summary{margin-bottom:8px}
   </div>
 
   <div class="panel">
-    <h2>Datasheet this design would have · tap any value for its equation</h2>
+    <h2>Idealized performance predictions · tap any value for its equation</h2>
     <div class="nums" id="nums"></div>
+    <div class="model-note" role="note"><b>Interpret the numbers:</b> Model-predicted values for the selected idealized assumptions, <b>not</b> measured values, rated/continuous power, validated motor specifications, or safe operating limits. Magnet properties, winding construction, gearing and thermal paths are simplified; high-load and high-temperature results are especially uncertain. Compare with independent motor data before drawing quantitative conclusions.</div>
   </div>
 
   <div class="panel">
@@ -179,39 +187,40 @@ details.assume-wrap[open] summary{margin-bottom:8px}
   </div>
 
   <div class="panel">
-    <h2>Step response: apply e<sub>m</sub> at t = 0, starting from rest</h2>
+    <h2>Step response: voltage or current command from rest</h2>
     <div class="plots"><canvas class="pl" id="sSpeed"></canvas><canvas class="pl" id="sCur"></canvas></div>
     <p class="cap" id="stepcap"></p>
   </div>
 
   <div class="panel">
-    <h2>Thermal response: same step, starting at rest at 25 °C ambient</h2>
+    <h2>Thermal response: same startup, 25 °C ambient, starting at selected T</h2>
     <canvas class="pl" id="thermP" style="height:210px"></canvas>
     <p class="cap" id="thermcap"></p>
+    <p class="cap"><b>Thermal caution:</b> Temperatures and any threshold time are outcomes of a simplified two-node heat-transfer model, not validated winding temperatures, rated operating limits, or safe stall times. The selected starting temperature affects parameters; full self-consistent temperature feedback is not solved automatically.</p>
   </div>
 
   <div class="panel">
     <h2>Sensitivity: how this model responds at this design</h2>
     <p class="cap" style="margin:0 0 8px;color:var(--ink)"><b>Read these as properties of the model, not of real motors.</b> They hold for changes of about ±10% from the current design. Real motors depart from them near iron saturation, temperature or voltage limits, and when several dimensions change together.</p>
-    <p class="cap" style="margin:0 0 6px">Each cell is a normalized (logarithmic) sensitivity, S = ∂ln y / ∂ln x = (x/y)(∂y/∂x). It is the local power-law exponent: if S = 2, a 1% increase in that input raises the output by about 2%. The page computes it by central finite differences (±1%) on the same equations, so it updates as you design.</p>
-    <p class="cap" style="margin:0 0 6px"><b>How to read it.</b> Exact power laws show up as whole numbers: k<sub>T</sub> ∝ N B l d gives 1.00 for N and d, and J<sub>rotor</sub> ∝ l d⁴ gives 4.00 for d. Outputs built from sums are not pure power laws, so their exponents are local and change as you design. Exponents of a product add: since τ<sub>m</sub> = R J / k<sub>T</sub>², S(τ<sub>m</sub>) = S(R) + S(J) − 2 S(k<sub>T</sub>).</p>
-    <p class="cap" style="margin:0 0 8px"><b>Example, default 12 V design, input d:</b> S(R) = 0.39 (wire length grows with 2l + 2d), S(J) = 0.20 (the rotor's d⁴ is diluted because the flywheel is 95% of the inertia), S(k<sub>T</sub>) = 1.00. So S(τ<sub>m</sub>) = 0.39 + 0.20 − 2.00 = −1.41. A 10% larger rotor predicts τ<sub>m</sub> × 1.1<sup>−1.41</sup> = 0.874; the full model gives 0.878. Remove the flywheel and the same row turns positive, because the rotor's own d⁴ inertia then dominates.</p>
+    <p class="cap" style="margin:0 0 6px">Each cell is a normalized (logarithmic) sensitivity, S = ∂ln y / ∂ln x = (x/y)(∂y/∂x). It is the local power-law exponent: if S = 2, a 1% increase in that input raises the output by about 2%. The page computes it by central finite differences (±1%) on the same equations, so it updates as you design. At stalls and mode transitions the derivative is not smooth and should not be interpreted as a local power law.</p>
+    <p class="cap" style="margin:0 0 6px"><b>How to read it.</b> Exact power laws show up as whole numbers: k<sub>T</sub> ∝ N B l d gives 1.00 for N and d, and J<sub>rotor</sub> ∝ l d⁴ gives 4.00 for d. Outputs built from sums are not pure power laws, so their exponents are local and change as you design. Exponents of a product add: for the frictionless datasheet definition τ<sub>m</sub> = R J / k<sub>T</sub>², S(τ<sub>m</sub>) = S(R) + S(J) − 2 S(k<sub>T</sub>).</p>
+    <p class="cap" style="margin:0 0 8px"><b>Example, default 12 V design, input d:</b> S(R) = 0.39 (wire length grows with 2l + 2d), S(J) = 0.20 (the rotor's d⁴ is diluted because the flywheel is 95% of the inertia), S(k<sub>T</sub>) = 1.00. Thus, for frictionless τ<sub>m</sub>, S = 0.39 + 0.20 − 2.00 = −1.41. A 10% larger rotor predicts τ<sub>m</sub> × 1.1<sup>−1.41</sup> = 0.874; the full model gives 0.878. Remove the flywheel and the same row turns positive, because the rotor's own d⁴ inertia then dominates.</p>
     <div class="tblwrap"><table id="sens"></table></div>
-    <p class="cap" style="margin:8px 0 0">Method: local, normalized sensitivity analysis. See P. M. Frank, <i>Introduction to System Sensitivity Theory</i> (Academic Press, 1978), and A. Saltelli et al., <i>Global Sensitivity Analysis: The Primer</i> (Wiley, 2008), ch. 1. It is the same quantity as Bode's sensitivity of a closed-loop transfer function, S = (dT/T)/(dG/G).</p>
+    <p class="cap" style="margin:8px 0 0">Method: local, normalized sensitivity analysis. See P. M. Frank, <i>Introduction to System Sensitivity Theory</i> (Academic Press, 1978), and A. Saltelli et al., <i>Global Sensitivity Analysis: The Primer</i> (Wiley, 2008), ch. 1. Control-system sensitivity functions are related logarithmic derivatives, but the closed-loop transfer and perturbed quantity must be specified separately.</p>
   </div>
 
   <div class="panel">
     <h2>Try this</h2>
     <ol class="try">
-      <li>Double the rotor diameter d. Before you look: what happens to k<sub>T</sub>, to rotor inertia, and to the mechanical time constant? Check the scaling table.</li>
+      <li>Double the rotor diameter d. Before you look: what happens to k<sub>T</sub>, to rotor inertia, and to the two mechanical time-constant approximations? Check the sensitivity table.</li>
       <li>Double N with the same wire. Stall torque barely changes. Why? Now also shrink the wire so the slot fill stays the same. What happens to k<sub>m</sub> = k<sub>T</sub>/√R?</li>
-      <li>Open the air gap from 0.5 mm to 2 mm. Which numbers suffer most, and why does a ferrite design suffer more than NdFeB with the same magnet thickness?</li>
-      <li>Pin a design, then sweep the gear ratio and watch Initial output acceleration. Where does it peak? Compare that ratio with √(J<sub>L</sub>/J<sub>rotor</sub>) shown on the gearhead. Why does τ<sub>m</sub> keep falling past that point even though the output accelerates less?</li>
+      <li>Open the air gap from 0.5 mm to 2 mm. Which numbers suffer most? Compare ferrite with NdFeB at equal magnet thickness: why is the percentage change in B identical in this simplified magnetic-circuit model even though their absolute fields differ?</li>
+      <li>Set the load torque to zero, pin the design, and sweep the gear ratio while watching approximate startup acceleration. Compare the peak to √(J<sub>L</sub>/J<sub>rotor</sub>). Add opposing load torque. Does the maximum shift as the gearhead formula predicts?</li>
       <li>Set winding temperature to 120 °C. Which constants change and by how much? This is why a motor that runs hot gets weaker.</li>
       <li>Raise τ<sub>L</sub> until the motor stalls. Look at copper loss and the temperature estimate. What would a current limit in the driver buy you?</li>
       <li>Switch to current mode and command half the voltage-mode stall current. Compare the step responses. Why is the current-mode speed a ramp, and what sets where the ramp bends over?</li>
-      <li>Read the steady-state temperature from the thermal plot, then set the T knob to that value. R rises and the magnets weaken. Does the new steady state move up or down? Repeat until it stops changing. That loop is the electro-thermal coupling this page leaves out.</li>
-      <li>Stall the motor and read how long the winding takes to reach 130 °C. Compare that with τ<sub>m</sub>. Why can a stall survive a few seconds but not a few minutes?</li>
+      <li>Read the steady-state temperature from the thermal plot, then set the T knob to that value. R rises and the magnets weaken. Does the new steady state move up or down? Repeat until it stops changing. That iterative estimate illustrates the electro-thermal coupling this page leaves out; it does not replace a coupled thermal simulation.</li>
+      <li>Stall the motor and observe the approximate time for the lumped motor temperature to reach the illustrative 130 °C threshold. Why is this not a validated safe stall time for a real motor?</li>
       <li>Load the N20-sized design and compare its predicted no-load speed and stall current with what you measured in A4.</li>
     </ol>
   </div>
@@ -219,26 +228,33 @@ details.assume-wrap[open] summary{margin-bottom:8px}
   <div class="panel">
     <details class="assume-wrap"><summary>Full model and assumptions</summary>
     <ul class="assume">
-      <li>Drive modes. Voltage: the full e<sub>m</sub> is across the motor. Current: an ideal current-controlled driver holds i = i<sub>cmd</sub> as long as R i + k<sub>v</sub>ω ≤ e<sub>m</sub>; past that it saturates at e<sub>m</sub>. The current loop is assumed much faster than τ<sub>m</sub>, and driver losses and PWM ripple are ignored.</li>
+      <li>Drive modes. Voltage: the full e<sub>m</sub> is across the motor. Current: an ideal current-controlled driver holds i = i<sub>cmd</sub> as long as R i + k<sub>v</sub>ω ≤ e<sub>m</sub>; past that it saturates at e<sub>m</sub>. The current loop is assumed instantaneous, and driver losses and PWM ripple are ignored.</li>
+      <li>Time constants and dynamics: τ<sub>e</sub> = L/R, τ<sub>eff</sub> = J/(b+k<sub>T</sub>²/R) for L/R small, and frictionless datasheet τ<sub>m</sub> = RJ/k<sub>T</sub>². Voltage drive uses the full second-order model with zero initial current. Signed current is retained, so inductive overshoot can briefly generate negative (regenerative) terminal current; heat uses i²R. Current mode assumes ideal instantaneous regulation and switches to voltage-limited operation at high speed.</li>
       <li>Coupled model: L di/dt + R i + k<sub>v</sub>ω = e<sub>m</sub>, J dω/dt + bω = k<sub>T</sub> i − τ<sub>L,motor</sub>. SI units, so k<sub>v</sub> = k<sub>T</sub>.</li>
       <li>2-pole stator, radial gap field B<sub>r</sub> = B cos φ. N total turns split evenly over m coils in a closed winding. With m ≥ 3 the brushes split it into a = 2 parallel paths, each carrying i/2 (a = 1 for a single coil). Averaging over angle gives k<sub>T</sub> = (2/π) N B l d / a, the textbook K = ZPΦ/(2πa) for this field shape.</li>
       <li>Gap flux from a series magnetic circuit with infinitely permeable iron: B = B<sub>r</sub> h<sub>m</sub> / (h<sub>m</sub> + μ<sub>r</sub> g). Ignores leakage, armature reaction, and iron saturation, so real B is lower.</li>
       <li>Resistance from copper wire length, one turn ≈ 2l + 2d, divided by a² for the parallel paths. Brush contact resistance and voltage drop are ignored, which makes small motors look better than they are. Copper ρ = 1.72×10⁻⁸ Ω·m at 20 °C, +0.393 %/°C. Magnets lose remanence with temperature (ferrite −0.20 %/°C, NdFeB −0.12 %/°C), assumed at winding temperature.</li>
       <li>Inductance from the same magnetic circuit: L = μ<sub>0</sub>N² l d / (2a²(g + h<sub>m</sub>/μ<sub>r</sub>)). An upper-end estimate.</li><li>Gearhead inertia, shaft inertia, cogging and torque ripple are left out of the dynamics. Ripple is shown in the drawing only.</li>
-      <li>Rotor is a solid cylinder (ρ = 7800 kg/m³). Flywheel is a steel disk (ρ = 7850 kg/m³). Gearhead reflects load inertia by 1/N<sub>g</sub>² and load torque by 1/(N<sub>g</sub>η<sub>g</sub>). Load torque does not back-drive the motor.</li>
-      <li>Thermal model: one lumped node, C<sub>th</sub> dT/dt = i²R + bω² − (T − 25 °C)/R<sub>th</sub>. R<sub>th</sub> is still-air convection (h ≈ 12 W/m²K) from the housing surface. C<sub>th</sub> sums mass × specific heat of rotor and housing steel (460 J/kg·K), copper (385), and magnets (ferrite 800, NdFeB 440). The losses use constants at the temperature set by the T knob; they are not updated as the motor heats. Use it to compare designs and time scales, not to predict a winding temperature.</li>
-      <li>Slot fill compares copper area 2NA<sub>w</sub> with 45% of the rotor cross-section. Hand-wound round wire rarely exceeds about 50% fill.</li>
+      <li>Rotor is a solid cylinder (ρ = 7800 kg/m³). Flywheel is a steel disk (ρ = 7850 kg/m³). Gearhead reflects load inertia by 1/N<sub>g</sub>² and opposing load torque by 1/(N<sub>g</sub>η<sub>g</sub>). This simplified gear loss is applied only to external load torque, not to acceleration torque. Reverse rotation and back-driving are excluded.</li>
+      <li>Thermal model: two nodes. Winding node (copper + rotor iron) heated by i²R; housing node (housing + magnets) heated by bearing friction bω². Winding to housing R<sub>th1</sub> = 1/(h<sub>gap</sub>·πd(l + d)) with h<sub>gap</sub> = 40 W/m²K, set from the Pittman DC040B datasheet; housing to ambient R<sub>th2</sub> = 1/(h × outer surface) with h = 1.32(50 K/D)<sup>¼</sup> + 6 W/m²K (natural convection of a horizontal cylinder at ΔT ≈ 50 K, plus radiation). Heat capacities use steel 460, copper 385, ferrite 800, NdFeB 440 J/kg·K. Electrical properties are evaluated at the selected T and are not updated as the winding heats. Both nodes start at the selected T with 25 °C ambient. This is not a validated winding temperature model or a safe-stall-time calculation.</li>
+      <li>Slot fill is copper conductor area 2NA<sub>w</sub> divided by the assumed slot area, 45% of the rotor cross-section. Values above 100% are geometrically impossible in this approximation; values above about 55–60% of actual slot area are difficult in practice.</li>
     </ul>
     </details>
   </div>
   <footer class="credit">
-    <div><h3>Author</h3><p><b>Frank C. Sup IV</b>, Professor, Mechanical and Industrial Engineering, University of Massachusetts Amherst</p><p>Version 1.2 · October 2026</p><h3 style="margin-top:10px">AI use disclosure</h3><p>Developed with assistance from Claude (Anthropic), a large language model, which generated the simulation code and draft explanatory text under the author's direction. The author is responsible for the content.</p></div>
-    <div><h3>How to cite</h3><p class="cite">Sup, F. C., IV. (2026). <i>DC motor designer</i> (Version 1.2) [Interactive simulation]. University of Massachusetts Amherst.</p><p>Add the page URL to the end of the citation once it is hosted.</p><p>This is a teaching model. It simplifies the physics on purpose and states its assumptions on the page. Check results against datasheets and measurements before using them for design.</p></div>
+    <div><h3>Author</h3><p><b>Frank C. Sup IV</b>, Professor, Mechanical and Industrial Engineering, University of Massachusetts Amherst</p><p>Version 1.8 · October 2026</p><h3 style="margin-top:10px">AI use disclosure</h3><p>Developed and revised with assistance from Claude (Anthropic) and ChatGPT (OpenAI), including AI-generated simulation code and draft explanations under the author's direction. The author is responsible for validation and content.</p></div>
+    <div><h3>How to cite</h3><p class="cite">Sup, F. C., IV. (2026). <i>DC motor designer</i> (Version 1.8) [Interactive simulation]. University of Massachusetts Amherst.</p><p>Add the page URL to the end of the citation once it is hosted.</p><p>This is a teaching model. It simplifies the physics on purpose and states its assumptions on the page. Check results against datasheets and measurements before using them for design.</p></div>
   </footer>
 </div>
 
 <script>
 (function(){
+/* EDUCATIONAL MODEL SCOPE: simplified magnetic circuit, winding resistance,
+   lumped inertia/friction and linear electrical dynamics. These parameters are
+   illustrative, not identified against a particular physical motor. The voltage
+   source and current regulator are idealized; power, stall, thermal and speed
+   calculations must never be interpreted as continuous ratings or safety limits. */
+
 const $=id=>document.getElementById(id);
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const PI=Math.PI, MU0=4*PI*1e-7, RHO_CU=1.72e-8, ALPHA_CU=0.00393, RHO_ROT=7800, RHO_ST=7850;
@@ -333,7 +349,7 @@ function calc(p){
     if(!cm||iv<=icmd) return {w:wv,i:iv,stalled:false,reg:'voltage'};
     return {w:(kT*icmd-tl)/b,i:icmd,stalled:false,reg:'current'};
   };
-  const s0=steady(0), w0=s0.w, i0=s0.i;
+  const s0=steady(0), w0=s0.w, i0=s0.i, zeroReg=s0.reg;
   const sL=steady(tLm); let wss=sL.w, iss=sL.i, stalled=sL.stalled, region=sL.reg;
   // curve sampled in increasing torque (decreasing speed)
   const K=120, cur={t:[],w:[],i:[],P:[],e:[]};
@@ -349,69 +365,164 @@ function calc(p){
   const Pop=p.tauL*1e-3*wss/Ng, Pin=vop*iss, effop=Pin>0?Pop/Pin:0;
   const Pcu=iss*iss*R, Pfr=b*wss*wss, Ploss=Pcu+Pfr;   // heat generated inside the motor
   const wall=Math.max(0.8*mm,0.08*d), Dout=d+2*g+2*hm+2*wall, Lout=l+0.5*d+4*mm;
-  const Asurf=PI*Dout*Lout+2*PI*Dout*Dout/4, Rth=1/(12*Asurf), dT=Ploss*Rth;
+  const H_OUT=1.32*Math.pow(50/Dout,0.25)+6, H_IN=40;   // W/m²K: natural convection (horizontal cylinder, ΔT≈50 K) + radiation; rotor-to-housing across the gap (fit to Pittman DC040B)
+  const Asurf=PI*Dout*Lout+2*PI*Dout*Dout/4, R2th=1/(H_OUT*Asurf);          // housing to ambient
+  const Ain=PI*d*(l+d), R1th=1/(H_IN*Ain);                                  // winding (in the rotor) to housing
+  const Rth=R1th+R2th, dTh=Ploss*R2th, dT=dTh+Pcu*R1th;                     // copper heats the winding node, bearing friction the housing
   const r1=d/2+g, r2=r1+hm;
   const mRot=RHO_ROT*PI*d*d/4*l, mMag=M.rho*(2/3)*PI*(r2*r2-r1*r1)*l, mHou=RHO_ST*PI*((Dout/2)**2-(Dout/2-wall)**2)*Lout, mCu=8900*N*lt*Aw;
   const mass=mRot+mMag+mHou+mCu;
-  const Cth=460*mRot+M.cp*mMag+460*mHou+385*mCu, tth=Rth*Cth;   // lumped heat capacity (J/K) and thermal time constant (s)
-  const te=L/R, tm=R*Jt/(kT*kT);
-  const a0=Math.max(0,tauS-tLm)/Jt/Ng;       // initial output acceleration, rad/s^2
-  return {p,M,Br,B,kT,R,R20,L,a,a0,cm,icmd,iAt,region,vop,Aw,lt,fill,Jr,JL,Jt,Ng,eg,b,em,tLm,tauS,iS,w0,i0,wss,iss,stalled,cur,Pmax,emax,Pop,Pin,effop,Pcu,Pfr,Ploss,Rth,Cth,tth,dT,Dout,Lout,wall,mass,te,tm,
+  const Cw=385*mCu+460*mRot, Ch=460*mHou+M.cp*mMag, Cth=Cw+Ch;            // two-node heat capacities (J/K)
+  // two-node network: Cw dTw/dt = Pcu - (Tw-Th)/R1;  Ch dTh/dt = Pfr + (Tw-Th)/R1 - (Th-Ta)/R2
+  const A11=-1/(Cw*R1th), A12=1/(Cw*R1th), A21=1/(Ch*R1th), A22=-(1/R1th+1/R2th)/Ch;
+  const trA=A11+A22, detA=A11*A22-A12*A21, sqA=Math.sqrt(Math.max(0,trA*trA/4-detA));
+  const lamS=trA/2+sqA, lamF=trA/2-sqA, tth=-1/lamS, tthw=-1/lamF;          // slow (motor) and fast (winding) time constants
+  const te=L/R;
+  const tm=R*Jt/(kT*kT);                  // datasheet frictionless time constant
+  const teff=Jt/(b+kT*kT/R);             // first-order effective time constant
+  // Stable quadratic solution; the naive (-B + sqrt(discriminant))/(2A) loses precision.
+  const qa=L*Jt, qb=R*Jt+b*L, qc=R*b+kT*kT;
+  const discriminant=qb*qb-4*qa*qc;
+  let poles;
+  if(discriminant>=0){
+    const q=-0.5*(qb+Math.sqrt(discriminant));
+    poles={re:[qc/q,q/qa],im:0};           // slow then fast, both negative
+  }else{
+    poles={re:[-qb/(2*qa),-qb/(2*qa)],im:Math.sqrt(-discriminant)/(2*qa)};
+  }
+  // Approximate output acceleration just after current has risen to its startup value.
+  const a0=Math.max(0,tauS-tLm)/Jt/Ng;
+  const rLoad=(p.tauL*1e-3)/(eg*tauS);
+  const NaccOpt=rLoad+Math.sqrt(rLoad*rLoad+JL/Jr);
+  return {p,M,Br,B,kT,R,R20,L,a,a0,cm,icmd,iAt,region,zeroReg,vop,Aw,lt,fill,Jr,JL,Jt,Ng,eg,b,em,tLm,tauS,iS,w0,i0,wss,iss,stalled,cur,Pmax,emax,Pop,Pin,effop,Pcu,Pfr,Ploss,Rth,R1th,R2th,Cw,Ch,A11,A12,A21,A22,lamS,lamF,tthw,dTh,Cth,tth,dT,Dout,Lout,wall,mass,te,tm,teff,poles,NaccOpt,
     km:kT/Math.sqrt(R), tauSout:tauS*Ng*eg, w0out:w0/Ng, Nopt:p.rL>0&&p.tL>0?Math.sqrt(JL/Jr):NaN};
 }
-/* thermal transient: one lumped node, losses from the step response, then steady losses */
+/* Exact time response for the idealized piecewise-linear model. No ODE steps or 60 s
+   extrapolation are used by the thermal calculation. A positive external torque
+   holds the rotor stationary until the current creates sufficient torque. */
 const TAMB=25, TLIM=130;
-function thermSim(c,st){
-  const tEnd=Math.max(5*c.tth, st.T*1.01), out={t:[],T:[]};
-  let th=0, tPrev=0, tHit=NaN;
-  const adv=(P,dt)=>{ const ss=P*c.Rth; th=ss+(th-ss)*Math.exp(-dt/c.tth); };
-  out.t.push(0); out.T.push(TAMB);
-  for(let k=1;k<st.t.length;k++){
-    const dt=st.t[k]-st.t[k-1], wm=st.W[k-1]*c.Ng*2*PI/60, i=st.I[k-1];
-    adv(i*i*c.R+c.b*wm*wm,dt); if(isNaN(tHit)&&th+TAMB>=TLIM) tHit=st.t[k];
+function makeTrajectory(c){
+  const J=c.Jt, b=c.b, k=c.kT, load=c.tLm;
+  if(c.cm){
+    // Ideal current control; voltage ceiling is enforced at every speed.
+    const wCross=(c.em-c.R*c.icmd)/k;
+    const F=k*c.iS-load;
+    const curLimited=wCross>0;
+    const wCur=b>0?F/b:Infinity;
+    let tCross=Infinity;
+    if(!c.stalled && curLimited && F>0 && (b===0||wCur>wCross)){
+      tCross=b>0 ? -J/b*Math.log1p(-wCross/wCur) : J*wCross/F;
+    }
+    const vTau=c.teff, cTau=b>0?J/b:Infinity;
+    const settle=c.stalled ? 0.02 : !curLimited ? 7*vTau :
+      isFinite(tCross) ? tCross+7*vTau : 7*cTau;
+    const stateAt=t=>{
+      if(c.stalled) return {w:0,i:c.iS};
+      if(!curLimited) return {w:c.wss*(-Math.expm1(-t/vTau)),i:c.iAt(c.wss*(-Math.expm1(-t/vTau)))};
+      if(t<tCross){
+        const w=b>0?wCur*(-Math.expm1(-t/cTau)):F*t/J;
+        return {w:Math.max(0,w),i:c.iAt(Math.max(0,w))};
+      }
+      const w=c.wss+(wCross-c.wss)*Math.exp(-(t-tCross)/vTau);
+      return {w:Math.max(0,w),i:c.iAt(Math.max(0,w))};
+    };
+    return {stateAt,settle,instantaneous:true,tCross};
   }
-  tPrev=st.t[st.t.length-1];
-  const n=400, dt=(tEnd-tPrev)/n;
-  for(let k=1;k<=n;k++){ adv(c.Ploss,dt); const t=tPrev+k*dt; if(isNaN(tHit)&&th+TAMB>=TLIM) tHit=t; if(k%2===0){out.t.push(t);out.T.push(th+TAMB);} }
-  out.tEnd=tEnd; out.Tss=TAMB+c.dT; out.tHit=tHit;
-  if(isNaN(tHit)&&out.Tss>=TLIM) out.tHit=-c.tth*Math.log(1-(TLIM-TAMB)/c.dT);
+  // Voltage mode: L di/dt + Ri + k*w = e; J dw/dt + b*w = k*i - load.
+  // During static hold, i rises with electrical time constant L/R.
+  const ith=load/k, istall=c.em/c.R;
+  const release=ith>0&&!c.stalled?-c.te*Math.log1p(-ith/istall):0;
+  const slowTime=1/Math.max(1e-15,-c.poles.re[0]);
+  const settle=c.stalled?7*c.te:release+7*slowTime;
+  const stateAt=t=>{
+    if(c.stalled || t<release){
+      return {w:0,i:istall*(-Math.expm1(-t/c.te))};
+    }
+    const t1=Math.max(0,t-release);
+    const [r1,r2]=c.poles.re;
+    let w,dw;
+    if(c.poles.im>0){
+      const beta=c.poles.im, e=Math.exp(r1*t1), si=Math.sin(beta*t1), co=Math.cos(beta*t1);
+      w=c.wss*(1+e*(-co+r1/beta*si));
+      dw=c.wss*e*(r1*r1+beta*beta)/beta*si;
+    }else if(Math.abs(r1-r2)<1e-7*Math.max(Math.abs(r1),Math.abs(r2))){
+      const e=Math.exp(r1*t1);
+      w=c.wss*(1-(1-r1*t1)*e);
+      dw=c.wss*r1*r1*t1*e;
+    }else{
+      const e1=Math.exp(r1*t1), e2=Math.exp(r2*t1), den=r2-r1;
+      w=c.wss*(1-(r2*e1-r1*e2)/den);
+      dw=c.wss*r1*r2*(e2-e1)/den;
+    }
+    w=Math.max(0,w);
+    // Current is recovered from the exact mechanical balance, with initial
+    // current at release = load/k (the rotor starts with zero acceleration).
+    // Bidirectional terminal current is required by the coupled voltage-drive equations.
+    // During inductive overshoot, negative current represents regeneration. Copper
+    // heating always uses i²R, so the sign must not be discarded.
+    const i=(J*dw+b*w+load)/k;
+    return {w,i};
+  };
+  return {stateAt,settle,instantaneous:false,release};
+}
+function stepSim(c){
+  const tr=makeTrajectory(c);
+  // Plot length follows the dynamics: the analytic settling time, capped only at 48 h.
+  const T=Math.min(48*3600,Math.max(1e-4,tr.settle));
+  const ts=new Set();
+  for(let j=0;j<=500;j++) ts.add(j*T/500);
+  const fast=Math.min(T,7*Math.max(c.te,1e-9));            // resolve the electrical start-up as well
+  for(let j=1;j<=60;j++) ts.add(fast*j/60);
+  const t=[],W=[],I=[];
+  for(const tj of [...ts].sort((a,b)=>a-b)){
+    const state=tr.stateAt(tj);
+    t.push(tj); W.push(state.w/c.Ng*60/(2*PI)); I.push(state.i);
+  }
+  const last=tr.stateAt(T);
+  const speedConverged=c.stalled || Math.abs(last.w-c.wss)<0.01*Math.max(c.wss,1e-8);
+  const currentConverged=Math.abs(last.i-c.iss)<0.01*Math.max(c.iS,1e-8);
+  return {t,W,I,T,cm:c.cm,quasi:c.cm,converged:speedConverged&&currentConverged,tr};
+}
+/* Integrate lumped heat response using the same exact motor state as the speed
+   plot, without prematurely substituting steady-state losses. Properties are
+   held at the knob's T, as stated in the assumptions. */
+function thermSim(c,step){
+  const tr=step.tr;
+  const tEnd=Math.min(24*3600,Math.max(step.T,tr.settle)+7*c.tth);   // temperature settles after the speed does
+  const early=Math.min(step.T,tEnd);
+  const times=new Set([0,tEnd]);
+  for(let j=1;j<=450;j++){ times.add(tEnd*j/450); times.add(early*j/450); }
+  const first=Math.min(c.te,c.teff,c.tthw,0.001)*0.1;
+  if(first<tEnd){ for(let j=0;j<=160;j++) times.add(first*Math.pow(tEnd/first,j/160)); }
+  const grid=[...times].sort((a,b)=>a-b);
+  // exact two-node step for constant heat over an interval (Sylvester formula, distinct real eigenvalues)
+  const L1=c.lamS, L2=c.lamF;
+  const step2=(x,Pcu,Pfr,dt)=>{
+    const e1=Math.exp(L1*dt), e2=Math.exp(L2*dt), s0=(L1*e2-L2*e1)/(L1-L2), s1=(e1-e2)/(L1-L2);
+    const xs=[Pcu*(c.R1th+c.R2th)+Pfr*c.R2th, (Pcu+Pfr)*c.R2th];          // steady rise above ambient
+    const u=[x[0]-xs[0], x[1]-xs[1]];
+    return [xs[0]+(s0+s1*c.A11)*u[0]+s1*c.A12*u[1], xs[1]+s1*c.A21*u[0]+(s0+s1*c.A22)*u[1]];
+  };
+  let x=[c.p.T-TAMB, c.p.T-TAMB], prev=0;
+  const out={t:[0],T:[c.p.T],Th:[c.p.T],tEnd,Tss:TAMB+c.dT,Thss:TAMB+c.dTh,tHit:c.p.T>=TLIM?0:NaN};
+  for(let j=1;j<grid.length;j++){
+    const t=grid[j], dt=t-prev, sm=tr.stateAt((prev+t)/2);
+    const nx=step2(x, sm.i*sm.i*c.R, c.b*sm.w*sm.w, dt);
+    if(!isFinite(out.tHit)&&x[0]+TAMB<TLIM&&nx[0]+TAMB>=TLIM) out.tHit=prev+dt*(TLIM-TAMB-x[0])/(nx[0]-x[0]);
+    out.t.push(t); out.T.push(nx[0]+TAMB); out.Th.push(nx[1]+TAMB);
+    x=nx; prev=t;
+  }
+  out.endTemperature=x[0]+TAMB;
+  out.motorConverged=tr.settle<=tEnd;
+  out.capped=tEnd>=24*3600;
   return out;
 }
-/* step response: RK4 on coupled ODEs, non-back-driving load */
-function stepSim(c){
-  let T=Math.min(Math.max(5*c.tm+5*c.te,1e-4),60);
-  let dt=Math.min(c.te/4,c.tm/50,T/400);
-  let quasi=false;
-  if(c.cm){
-    // ideal current loop: i = min(i_cmd, what the supply voltage allows at this speed)
-    const surplus=c.kT*Math.min(c.icmd,c.iS)-c.tLm;
-    const tramp= surplus>0? c.Jt*c.wss/surplus : 0;
-    T=Math.min(60,Math.max(1e-4,5*c.tm,1.6*tramp+3*c.tm)); dt=T/4000; quasi=true;
-  } else if(T/dt>40000){dt=T/4000;quasi=true;}
-  const n=Math.ceil(T/dt), every=Math.max(1,Math.floor(n/400));
-  const f=(i,w)=>{
-    let di = quasi?0:(c.em-c.R*i-c.kT*w)/c.L;
-    let net=c.kT*i-c.b*w-c.tLm;
-    if(w<=0&&net<0) net=0;
-    return [di,net/c.Jt];
-  };
-  let i=0,w=0; const t=[],W=[],I=[];
-  for(let k=0;k<=n;k++){
-    if(quasi) i=c.iAt(w);
-    if(k%every===0){t.push(k*dt);W.push(w/c.Ng*60/(2*PI));I.push(i);}
-    const a=f(i,w), b2=f(i+dt/2*a[0],w+dt/2*a[1]), c3=f(i+dt/2*b2[0],w+dt/2*b2[1]), d4=f(i+dt*c3[0],w+dt*c3[1]);
-    i+=dt/6*(a[0]+2*b2[0]+2*c3[0]+d4[0]); w+=dt/6*(a[1]+2*b2[1]+2*c3[1]+d4[1]);
-    if(w<0)w=0;
-  }
-  return {t,W,I,quasi,T,cm:c.cm};
-}
-
 /* ---------- formatting ---------- */
 function sig(x,n=3){ if(!isFinite(x)) return '—'; if(x===0) return '0'; const a=Math.abs(x); if(a>=1e4) return x.toFixed(0); return String(+x.toPrecision(n)); }
 const F={
  B:c=>sig(c.B)+' T', kT:c=>sig(c.kT)+' N·m/A', kv:c=>sig(c.kT)+' V·s/rad', kvk:c=>sig(c.kT*1000*2*PI/60)+' V/krpm',
  R:c=>sig(c.R)+' Ω', L:c=>sig(c.L*1e3)+' mH', te:c=>tfmt(c.te), Jr:c=>sig(c.Jr*1e7)+' g·cm²', JLr:c=>sig(c.JL/(c.Ng*c.Ng)*1e7)+' g·cm²',
- Jt:c=>sig(c.Jt*1e7)+' g·cm²', tm:c=>tfmt(c.tm), ts:c=>sig(c.tauSout*1e3)+' mN·m', iS:c=>sig(c.iS)+' A', w0:c=>sig(c.w0out*60/(2*PI))+' rpm',
+ Jt:c=>sig(c.Jt*1e7)+' g·cm²', tm:c=>tfmt(c.teff), ts:c=>sig(c.tauSout*1e3)+' mN·m', iS:c=>sig(c.iS)+' A', w0:c=>sig(c.w0out*60/(2*PI))+' rpm',
  i0:c=>sig(c.i0*1e3)+' mA', Pmax:c=>sig(c.Pmax)+' W', emax:c=>sig(c.emax*100)+' %', km:c=>sig(c.km*1e3)+' mN·m/√W',
  wop:c=>sig(c.wss/c.Ng*60/(2*PI))+' rpm', iop:c=>sig(c.iss)+' A', eop:c=>sig(c.effop*100)+' %', Pcu:c=>sig(c.Pcu)+' W', dT:c=>sig(c.dT)+' °C',
  fill:c=>sig(c.fill*100)+' %', a0:c=>sig(c.a0*60/(2*PI))+' rpm/s', vop:c=>sig(c.vop)+' V', mass:c=>sig(c.mass*1e3)+' g', Dout:c=>sig(c.Dout*1e3)+' × '+sig(c.Lout*1e3)+' mm'
@@ -432,14 +543,14 @@ const NUMS=[
  ['Pmax','Max output power','Pmax',c=>c.Pmax],
  ['emax','Max efficiency','emax',c=>c.emax],
  ['Jt','Inertia at motor shaft','Jt',c=>c.Jt],
- ['a0','Initial output acceleration','a0',c=>c.a0],
- ['tm','Mechanical time const. τ<sub>m</sub>','tm',c=>c.tm],
+ ['a0','Approx. startup acceleration','a0',c=>c.a0],
+ ['tm','Mechanical time const. τ','tm',c=>c.teff,c=>'datasheet RJ/kT² = '+tfmt(c.tm)+' (friction ignored)'],
  ['te','Electrical time const. τ<sub>e</sub>','te',c=>c.te],
  ['wop','Speed at your load','wop',c=>c.wss],
  ['iop','Current at your load','iop',c=>c.iss],
  ['vop','Motor voltage at your load','vop',c=>c.vop],
  ['eop','Efficiency at your load','eop',c=>c.effop],
- ['dT','Steady temp. rise at your load','dT',c=>c.dT],
+ ['dT','Steady winding temp. rise','dT',c=>c.dT],
  ['mass','Estimated motor mass','mass',c=>c.mass],
  ['Dout','Outside size (D × L)','Dout',c=>c.Dout],
 ];
@@ -461,14 +572,14 @@ function renderInsp(){
   const map={
    winding:()=>'<h3>Armature winding</h3><p>'+p.N+' turns of '+p.dw+' mm copper split over '+p.m+' coil'+(p.m>1?'s':'')+'. Each conductor that sits in the field feels a Lorentz force. The current direction flips at the plane of commutation, so every conductor pushes the same way around.</p>'+eq('F = i l × B &nbsp;&nbsp; k<sub>T</sub> = (2/π)·N·B·l·d / a = '+F.kT(c))+eq('R = ρ<sub>Cu</sub>(T)·N·(2l + 2d) / (a² · π d<sub>w</sub>²/4) = '+F.R(c))+'<p>a = '+c.a+(c.a===2?': the commutator splits the winding into two parallel paths, so each conductor carries i/2.':': a single coil is one path.')+'</p>'+'<p>Slot fill '+F.fill(c)+'. Bundles drawn to scale: if they overlap or poke out of the rotor, the winding does not fit.</p>',
    magnet:()=>'<h3>Permanent magnets ('+c.M.name+')</h3><p>Two poles, each '+p.hm+' mm thick. The magnet drives flux across the air gap, through the rotor iron, and back through the housing.</p>'+eq('B<sub>r</sub>(T) = '+sig(c.M.Br)+'·(1 '+(c.M.a*100)+'%/°C·(T−20)) = '+sig(c.Br)+' T')+eq('B = B<sub>r</sub>·h<sub>m</sub> / (h<sub>m</sub> + μ<sub>r</sub> g) = '+F.B(c))+'<p>Thicker magnets help, but with diminishing returns: B can never exceed B<sub>r</sub>.</p>',
-   gap:()=>'<h3>Air gap g = '+p.g+' mm</h3><p>Air has high reluctance, so the gap is where most of the magnet\'s MMF is spent. A ferrite magnet is thin compared with its gap budget, so the gap hurts it more.</p>'+eq('B = B<sub>r</sub>·h<sub>m</sub> / (h<sub>m</sub> + μ<sub>r</sub> g) = '+F.B(c))+'<p>The same reluctance sets inductance: '+eq('L = μ<sub>0</sub>N²·l·d / (2a²(g + h<sub>m</sub>/μ<sub>r</sub>)) = '+F.L(c))+'</p>',
+gap:()=>'<h3>Air gap g = '+p.g+' mm</h3><p>Air-gap reluctance reduces the flux density. With the same h<sub>m</sub> and μ<sub>r</sub>, this simple model predicts the <b>same fractional sensitivity</b> for ferrite and NdFeB; their absolute B values differ because B<sub>r</sub> differs.</p>'+eq('B = B<sub>r</sub>·h<sub>m</sub>/(h<sub>m</sub>+μ<sub>r</sub>g) = '+F.B(c))+eq('∂ln B/∂ln g = −μ<sub>r</sub>g/(h<sub>m</sub>+μ<sub>r</sub>g)')+eq('L = μ<sub>0</sub>N²·l·d/(2a²(g+h<sub>m</sub>/μ<sub>r</sub>)) = '+F.L(c)),
    field:()=>'<h3>Magnetic field</h3><p>Drawn as straight lines from the N pole to the S pole. In the gap the field is close to radial; its radial part under a conductor at angle φ is B cos φ. That cos φ is why one coil gives a lumpy torque and why more coils smooth it.</p>'+eq('τ(φ) ∝ Σ |cos(φ + kπ/m)|, &nbsp; average factor 2/π'),
    rotor:()=>'<h3>Rotor (armature)</h3><p>A steel cylinder, d = '+p.d+' mm, l = '+p.l+' mm. Diameter sets the lever arm for the conductor force, so k<sub>T</sub> grows with d. Inertia grows with d⁴.</p>'+eq('J<sub>rotor</sub> = (π/32)·ρ·l·d⁴ = '+F.Jr(c)),
    comm:()=>'<h3>Plane of commutation</h3><p>The brushes reverse a coil\'s current as it crosses this line, halfway between the poles. Without that reversal the torque would change sign every half turn and the rotor would just rock like a spring.</p>',
-   housing:()=>'<h3>Housing / back iron</h3><p>Steel can that carries the return flux between the poles. Here it is '+sig(c.wall*1e3)+' mm thick. Its outside surface is also the main path for heat to leave the motor.</p>'+eq('ΔT = (i²R + bω²) / (h·A<sub>surface</sub>) = '+sig(c.Ploss)+' W / (12 W/m²K · '+sig((PI*c.Dout*c.Lout+PI*c.Dout*c.Dout/2)*1e4)+' cm²) = '+F.dT(c)),
-   gear:()=>'<h3>Gearhead '+p.Ng+':1</h3><p>Multiplies torque and divides speed. It also divides the load inertia the motor feels by N<sub>g</sub>².</p>'+eq('J<sub>at motor</sub> = J<sub>rotor</sub> + J<sub>L</sub>/N<sub>g</sub>² = '+F.Jr(c)+' + '+F.JLr(c))+eq('τ<sub>L, motor</sub> = τ<sub>L</sub> / (N<sub>g</sub> η<sub>g</sub>) = '+sig(c.tLm*1e3)+' mN·m')+(isFinite(c.Nopt)?'<p>Inertia match: N<sub>g</sub> = √(J<sub>L</sub>/J<sub>rotor</sub>) = '+sig(c.Nopt)+' gives the fastest load acceleration for a given motor torque.</p>':''),
+   housing:()=>'<h3>Housing / back iron</h3><p>Steel can that carries the return flux between the poles. Here it is '+sig(c.wall*1e3)+' mm thick. Heat from the winding must first cross the air gap to reach it, then leave its outside surface.</p>'+eq('R<sub>th1</sub> = 1/(h<sub>gap</sub>·π d (l + d)) = 1/(40 W/m²K · '+sig(PI*c.p.d*(c.p.l+c.p.d)/100)+' cm²) = '+sig(c.R1th)+' K/W')+eq('R<sub>th2</sub> = 1/(h·A<sub>surface</sub>) = 1/('+sig(1.32*Math.pow(50/c.Dout,0.25)+6)+' W/m²K · '+sig((PI*c.Dout*c.Lout+PI*c.Dout*c.Dout/2)*1e4)+' cm²) = '+sig(c.R2th)+' K/W')+eq('ΔT<sub>housing</sub> = (i²R + bω²)·R<sub>th2</sub> = '+sig(c.dTh)+' °C'),
+gear:()=>'<h3>Gearhead '+p.Ng+':1</h3><p>The motor sees J<sub>rotor</sub>+J<sub>L</sub>/N<sub>g</sub>². The simple model applies gear efficiency to opposing load torque, not to load inertia.</p>'+eq('J = J<sub>rotor</sub>+J<sub>L</sub>/N<sub>g</sub>² = '+F.Jt(c))+eq('τ<sub>L,motor</sub> = τ<sub>L</sub>/(N<sub>g</sub>η<sub>g</sub>) = '+sig(c.tLm*1e3)+' mN·m')+(isFinite(c.Nopt)?'<p>No-load inertia matching: √(J<sub>L</sub>/J<sub>rotor</sub>) = '+sig(c.Nopt)+'.</p>':'')+(isFinite(c.NaccOpt)?eq('N<sub>g</sub>* = r+√(r²+J<sub>L</sub>/J<sub>rotor</sub>) = '+sig(c.NaccOpt)+'; r=τ<sub>L</sub>/(η<sub>g</sub>τ<sub>s,motor</sub>)')+'<p>The mathematical optimum assumes fixed η<sub>g</sub> and unconstrained gear ratio. The slider permits only ratios from 1 to 300.</p>':''),
    fly:()=>'<h3>Load flywheel</h3><p>Steel disk, r = '+p.rL+' mm, t = '+p.tL+' mm.</p>'+eq('J<sub>L</sub> = ½ m r² = (π/2)·ρ·t·r⁴ = '+sig(c.JL*1e7)+' g·cm²')+'<p>Radius enters to the fourth power. Doubling r multiplies J<sub>L</sub> by 16.</p>',
-   torque:()=>'<h3>Applied load torque τ<sub>L</sub> = '+p.tauL+' mN·m</h3><p>A constant torque opposing rotation at the output, like lifting a weight on a pulley. It moves the operating point down the torque-speed line.</p>'+eq('ω<sub>ss</sub> = (k<sub>T</sub>e<sub>m</sub>/R − τ<sub>L,motor</sub>) / (b + k<sub>T</sub>²/R)')+(c.stalled?'<p><b>The motor is stalled.</b> τ<sub>L,motor</sub> exceeds stall torque, so current sits at e<sub>m</sub>/R and all input power becomes heat.</p>':'')
+torque:()=>'<h3>Applied output load torque τ<sub>L</sub> = '+p.tauL+' mN·m</h3><p>A constant torque opposing positive rotation; the rotor cannot move backwards in this model.</p>'+eq(c.stalled?'Motor is stalled: ω = 0, i = i<sub>s</sub> = '+F.iS(c):c.region==='current'?'ω = (k<sub>T</sub>i<sub>cmd</sub>−τ<sub>L,motor</sub>)/b = '+F.wop(c):'ω = (k<sub>T</sub>e<sub>m</sub>/R−τ<sub>L,motor</sub>)/(b+k<sub>T</sub>²/R) = '+F.wop(c)),
   };
   const nmap={
    kT:'Torque constant'+eq('k<sub>T</sub> = (2/π)·N·B·l·d / a')+'<p>Torque per amp. Linear in each of N, B, l, d. a is the number of parallel winding paths (2 here unless m = 1).</p>',
@@ -476,21 +587,21 @@ function renderInsp(){
    R:'Terminal resistance'+eq('R = ρ<sub>Cu</sub>(1 + 0.00393(T−20))·N·(2l+2d) / (a² A<sub>w</sub>)')+'<p>Ignores brush contact resistance, which matters for small motors.</p>',
    L:'Inductance'+eq('L = μ<sub>0</sub>N² l d / (2a²(g + h<sub>m</sub>/μ<sub>r</sub>))')+'<p>Grows with N². Sets how fast current can change, which matters for PWM ripple.</p>',
    km:'Motor constant'+eq('k<sub>m</sub> = k<sub>T</sub>/√R')+'<p>Torque per square root of copper loss. Rewinding with more turns of thinner wire at the same fill changes k<sub>T</sub> and R but leaves k<sub>m</sub> almost the same. Only geometry, magnets, and copper volume move it.</p>',
-   ts:'Stall torque at the output'+eq('τ<sub>s</sub> = k<sub>T</sub>·min(i<sub>cmd</sub>, e<sub>m</sub>/R) · N<sub>g</sub> η<sub>g</sub>')+'<p>In voltage mode the current limit is e<sub>m</sub>/R. In current mode it is the commanded current, if the supply can deliver it.</p>',
-   iS:'Stall current'+eq('i<sub>s</sub> = e<sub>m</sub>/R')+'<p>Check this against your driver. The DRV8833 in the kit is a small driver.</p>',
-   w0:'No-load speed'+eq('ω<sub>0</sub> = k<sub>T</sub>e<sub>m</sub> / (k<sub>T</sub>k<sub>v</sub> + bR), then ÷ N<sub>g</sub>'),
-   i0:'No-load current'+eq('i<sub>0</sub> = (e<sub>m</sub> − k<sub>v</sub>ω<sub>0</sub>)/R = bω<sub>0</sub>/k<sub>T</sub>')+'<p>The current needed just to overcome friction.</p>',
-   Pmax:'Max mechanical output power'+eq('P = τω, &nbsp; max ≈ τ<sub>s</sub>ω<sub>0</sub>/4 at half speed'),
-   emax:'Max efficiency'+eq('η<sub>max</sub> ≈ (1 − √(i<sub>0</sub>/i<sub>s</sub>))² · η<sub>g</sub>')+'<p>Happens near no-load, far from the max-power point.</p>',
-   a0:'Initial output acceleration'+eq('α<sub>0</sub> = (τ<sub>s</sub> − τ<sub>L,motor</sub>) / (J<sub>rotor</sub> + J<sub>L</sub>/N<sub>g</sub>²) ÷ N<sub>g</sub>')+'<p>How hard the motor can accelerate the load from rest, ignoring the brief current rise. With a fixed motor, this peaks at the inertia-match ratio N<sub>g</sub> = √(J<sub>L</sub>/J<sub>rotor</sub>). Faster gearing makes the motor itself spin up quicker but the output slower.</p>',
+ts:'Stall torque at the output'+eq('τ<sub>s,out</sub> = k<sub>T</sub>·'+(c.cm?'min(i<sub>cmd</sub>,e<sub>m</sub>/R)':'(e<sub>m</sub>/R)')+'·N<sub>g</sub>η<sub>g</sub> = '+F.ts(c))+'<p>'+ (c.cm?'Current regulation is capped by available supply voltage.':'In voltage mode the current command is ignored.')+' This is an instantaneous theoretical stall value, not a continuous rating.</p>', 
+iS:'Stall current'+eq('i<sub>s</sub> = '+(c.cm?'min(i<sub>cmd</sub>,e<sub>m</sub>/R)':'e<sub>m</sub>/R')+' = '+F.iS(c))+'<p>This idealized prediction assumes the selected voltage source or current regulator can supply the required current. It is not a continuous-duty rating.</p>', 
+w0:'No-load output speed'+eq(c.cm&&c.zeroReg==='current'?'ω<sub>0,motor</sub> = k<sub>T</sub>i<sub>cmd</sub>/b, then /N<sub>g</sub> = '+F.w0(c):'ω<sub>0,motor</sub> = k<sub>T</sub>e<sub>m</sub>/(k<sub>T</sub>²+bR), then /N<sub>g</sub> = '+F.w0(c))+'<p>No-load means τ<sub>L</sub> = 0 but viscous friction is retained.</p>', 
+i0:'No-load motor current'+eq(c.cm&&c.zeroReg==='current'?'i<sub>0</sub> = i<sub>cmd</sub> = bω<sub>0,motor</sub>/k<sub>T</sub> = '+F.i0(c):'i<sub>0</sub> = (e<sub>m</sub>−k<sub>T</sub>ω<sub>0,motor</sub>)/R = '+F.i0(c))+'<p>Current required to balance modelled viscous friction with no opposing load torque.</p>', 
+Pmax:'Maximum steady mechanical output power'+eq('P<sub>max</sub> = max<sub>sampled operating points</sub>(τ<sub>out</sub>·ω<sub>out</sub>) = '+F.Pmax(c))+'<p>Numerical maximum of the piecewise steady-state curve, not a continuous power rating. The quarter-product approximation is only valid for an approximately linear voltage-driven torque-speed line.</p>', 
+emax:'Maximum steady-state efficiency'+eq('η<sub>max</sub> = max<sub>sampled operating points</sub>[(τ<sub>out</sub>·ω<sub>out</sub>)/(v i)] = '+sig(c.emax*100)+'%')+'<p>Computed from model input electrical power, excluding driver switching and brush losses. Not a measured efficiency rating.</p>', 
+a0:'Approximate startup output acceleration'+eq('α ≈ (τ<sub>s,motor</sub>N<sub>g</sub>−τ<sub>L</sub>/η<sub>g</sub>)/(J<sub>rotor</sub>N<sub>g</sub>²+J<sub>L</sub>) = '+F.a0(c))+'<p>Approximation after startup current rises. The true acceleration from zero current in voltage mode starts at zero for zero load. The unconstrained maximum occurs at N<sub>g</sub>* = '+sig(c.NaccOpt)+'. With zero load torque it becomes the inertia match ratio '+sig(c.Nopt)+'.</p>', 
    Jt:'Inertia at the motor shaft'+eq('J = J<sub>rotor</sub> + J<sub>L</sub>/N<sub>g</sub>² = '+F.Jr(c)+' + '+F.JLr(c)),
-   tm:'Mechanical time constant'+eq('τ<sub>m</sub> = R J / (k<sub>T</sub> k<sub>v</sub>)')+'<p>Time to reach 63% of final speed when τ<sub>e</sub> ≪ τ<sub>m</sub>. This is the dominant pole you identify in A4.</p>',
-   te:'Electrical time constant'+eq('τ<sub>e</sub> = L/R')+'<p>Usually much shorter than τ<sub>m</sub>, which is why the motor often looks first order.</p>',
-   wop:'Speed at your load'+eq('ω<sub>ss</sub> = (k<sub>T</sub>e<sub>m</sub>/R − τ<sub>L,motor</sub>)/(b + k<sub>T</sub>²/R)'),
-   vop:'Motor terminal voltage at your load'+eq('v = R i + k<sub>v</sub> ω')+'<p>In voltage mode this equals e<sub>m</sub>. In current mode the driver only applies what it needs to hold the current, which is how a current-controlled (torque-mode) servo drive works.</p>',
-   iop:'Current at your load'+eq('i = (e<sub>m</sub> − k<sub>v</sub>ω<sub>ss</sub>)/R'),
+tm:'Mechanical time constants'+eq('τ<sub>eff</sub> = J/(b+k<sub>T</sub>²/R) = '+tfmt(c.teff))+eq('τ<sub>m,datasheet</sub> = RJ/k<sub>T</sub>² = '+tfmt(c.tm))+'<p>τ<sub>eff</sub> is the approximate voltage-driven time constant if inductance is negligible. τ<sub>m,datasheet</sub> ignores friction and is used in the exported homework row. Neither is generally the current-controlled time constant.</p>'+eq('LJ s²+(RJ+bL)s+(Rb+k<sub>T</sub>²)=0')+'<p>Full voltage-driven poles: '+(c.poles.im?sig(c.poles.re[0])+' ± '+sig(c.poles.im)+'j s⁻¹':sig(c.poles.re[0])+' and '+sig(c.poles.re[1])+' s⁻¹')+'.</p>', 
+te:'Electrical time constant'+eq('τ<sub>e</sub> = L/R = '+tfmt(c.te))+'<p>The current in voltage mode initially rises with this time scale. Current mode assumes an ideal fast current regulator.</p>', 
+wop:'Speed at the specified load'+eq(c.stalled?'Stalled: ω<sub>ss</sub> = 0 rpm':c.region==='current'?'ω<sub>ss</sub> = (k<sub>T</sub>i<sub>cmd</sub>−τ<sub>L,motor</sub>)/b = '+F.wop(c):'ω<sub>ss</sub> = (k<sub>T</sub>e<sub>m</sub>/R−τ<sub>L,motor</sub>)/(b+k<sub>T</sub>²/R) = '+F.wop(c)),
+   vop:'Motor terminal voltage at your load'+eq('v = R i + k<sub>v</sub> ω = '+F.vop(c))+'<p>In voltage mode this equals e<sub>m</sub>. In current mode the driver only applies what it needs to hold the current, which is how a current-controlled (torque-mode) servo drive works.</p>',
+iop:'Current at the specified load'+eq(c.stalled?'i = i<sub>s</sub> = '+F.iop(c):c.region==='current'?'i = i<sub>cmd</sub> = '+F.iop(c):'i = (e<sub>m</sub>−k<sub>T</sub>ω<sub>ss</sub>)/R = '+F.iop(c)),
    eop:'Efficiency at your load'+eq('η = τ<sub>L</sub>ω<sub>out</sub> / (v i)')+'<p>v is the voltage across the motor terminals. Driver losses are not included.</p>',
-   dT:'Steady temperature rise (rough)'+eq('ΔT = (i²R + bω²)·R<sub>th</sub>, R<sub>th</sub> = 1/(h A<sub>surface</sub>), h ≈ 12 W/m²K')+'<p>Still air, one lumped temperature for the whole motor. The real winding runs hotter than the case. See the thermal plot for how long it takes to get there.</p>',
+dT:'Steady winding temperature rise'+eq('ΔT<sub>winding</sub> = i²R·(R<sub>th1</sub> + R<sub>th2</sub>) + bω²·R<sub>th2</sub> = '+F.dT(c))+'<p>R<sub>th1</sub> = '+sig(c.R1th)+' K/W carries copper heat across the air gap to the housing; R<sub>th2</sub> = '+sig(c.R2th)+' K/W takes it to still air. Properties are frozen at the selected T, so this is a model estimate, not a measured winding temperature or safe limit.</p>',
    mass:'Estimated mass'+eq('rotor + magnets + housing + copper'),
    Dout:'Outside dimensions'+eq('D = d + 2g + 2h<sub>m</sub> + 2·wall')
   };
@@ -568,10 +679,10 @@ function sideView(){
   x+=Lo*s;
   const shH=Math.max(2,0.12*p.d*mm*s);
   if(p.Ng>1){
-    h+='<g data-k="gear">'+rect('gear',x,gL*s,0.92*Do*s,'var(--steeld)','rx="3"')+'<text x="'+(x+gL*s/2)+'" y="'+(y0+4)+'" text-anchor="middle" font-family="var(--f-mono)" font-size="'+Math.min(12,Math.max(8,gL*s/4))+'" fill="var(--panel)">'+p.Ng+':1</text>'+(isFinite(c.Nopt)?'<text x="'+(x+gL*s/2)+'" y="'+(y0+0.46*Do*s+14)+'" text-anchor="middle" font-family="var(--f-mono)" font-size="9" fill="var(--muted)">match √(JL/Jr) = '+sig(c.Nopt,2)+'</text>':'')+'</g>';
+    h+='<g data-k="gear">'+rect('gear',x,gL*s,0.92*Do*s,'var(--steeld)','rx="3"')+'<text x="'+(x+gL*s/2)+'" y="'+(y0+4)+'" text-anchor="middle" font-family="var(--f-mono)" font-size="'+Math.min(12,Math.max(8,gL*s/4))+'" fill="var(--panel)">'+p.Ng+':1</text>'+(isFinite(c.Nopt)?'<text x="'+(x+gL*s/2)+'" y="'+(y0+0.46*Do*s+14)+'" text-anchor="middle" font-family="var(--f-mono)" font-size="9" fill="var(--muted)">accel optimum '+sig(c.NaccOpt,2)+' · zero-load match '+sig(c.Nopt,2)+'</text>':'')+'</g>';
     x+=gL*s;
   } else if(isFinite(c.Nopt)) {
-    h+='<text x="'+(x+4)+'" y="'+(y0+Do*s/2+14)+'" font-family="var(--f-mono)" font-size="9" fill="var(--muted)">direct drive · match ratio would be '+sig(c.Nopt,2)+'</text>';
+    h+='<text x="'+(x+4)+'" y="'+(y0+Do*s/2+14)+'" font-family="var(--f-mono)" font-size="9" fill="var(--muted)">direct drive · acceleration optimum '+sig(c.NaccOpt,2)+'</text>';
   }
   h+='<rect data-k="gear" x="'+x+'" y="'+(y0-shH/2)+'" width="'+(shaft*s)+'" height="'+shH+'" fill="var(--steeld)"/>';
   x+=shaft*s;
@@ -600,21 +711,22 @@ function anim(t){
 }
 
 /* ---------- charts ---------- */
-function nice(x){const e=Math.pow(10,Math.floor(Math.log10(x))), f=x/e; return (f<=1?1:f<=2?2:f<=5?5:10)*e;}
+function nice(x){if(!(x>0)&&isFinite(x))return 1; const e=Math.pow(10,Math.floor(Math.log10(x))), f=x/e; return (f<=1?1:f<=2?2:f<=5?5:10)*e;}
 function plot(cv,o){
   const W=cv.clientWidth, H=cv.clientHeight, dpr=window.devicePixelRatio||1;
   cv.width=W*dpr; cv.height=H*dpr; const g=cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W,H);
-  const ml=52, mr=12, mt=22, mb=30, pw=W-ml-mr, ph=H-mt-mb;
+  const ml=52, mr=12, mt=22, mb=30, pw=Math.max(1,W-ml-mr), ph=Math.max(1,H-mt-mb);
   const xmax=o.xmax>0?o.xmax:1, ymax=o.ymax>0?o.ymax:1;
-  const X=v=>ml+v/xmax*pw, Y=v=>mt+ph-v/ymax*ph;
+  const ymin=o.ymin!=null?o.ymin:0, yrange=Math.max(1e-15,ymax-ymin);
+  const X=v=>ml+v/xmax*pw, Y=v=>mt+ph-(v-ymin)/yrange*ph;
   const ink=css('--ink'), mut=css('--muted'), line=css('--line');
   g.font='600 12px '+css('--f-disp'); g.fillStyle=ink; g.fillText(o.title,ml,14);
   g.font='10px '+css('--f-mono'); g.strokeStyle=line; g.lineWidth=1; g.fillStyle=mut;
-  const ys=nice(ymax/4); for(let v=0;v<=ymax*1.0001;v+=ys){ g.beginPath(); g.moveTo(ml,Y(v)); g.lineTo(ml+pw,Y(v)); g.stroke(); g.textAlign='right'; g.fillText(sig(v,3),ml-6,Y(v)+3); }
+  const ys=nice(yrange/4); for(let j=0, v=Math.ceil(ymin/ys)*ys;j<100&&v<=ymax+ys*1e-8;j++,v=Math.ceil(ymin/ys)*ys+j*ys){ g.beginPath(); g.moveTo(ml,Y(v)); g.lineTo(ml+pw,Y(v)); g.stroke(); g.textAlign='right'; g.fillText(sig(v,3),ml-6,Y(v)+3); }
   const xs=nice(xmax/4); g.textAlign='center'; for(let v=0;v<=xmax*1.0001;v+=xs){ g.fillText(sig(v,3),X(v),mt+ph+13); }
   g.textAlign='right'; g.fillText(o.xlab,ml+pw,H-3); g.textAlign='left';
   g.save(); g.beginPath(); g.rect(ml,mt-2,pw+2,ph+4); g.clip();
-  (o.hlines||[]).forEach(v=>{ if(v.y>=0&&v.y<=ymax){ g.strokeStyle=v.col; g.setLineDash([5,4]); g.beginPath(); g.moveTo(ml,Y(v.y)); g.lineTo(ml+pw,Y(v.y)); g.stroke(); g.setLineDash([]); if(v.label){ g.fillStyle=v.tcol||mut; g.font='10px '+css('--f-mono'); g.textAlign='right'; g.fillText(v.label,ml+pw-4,Y(v.y)-4); g.textAlign='left'; } } });
+  (o.hlines||[]).forEach(v=>{ if(v.y>=ymin&&v.y<=ymax){ g.strokeStyle=v.col; g.setLineDash([5,4]); g.beginPath(); g.moveTo(ml,Y(v.y)); g.lineTo(ml+pw,Y(v.y)); g.stroke(); g.setLineDash([]); if(v.label){ g.fillStyle=v.tcol||mut; g.font='10px '+css('--f-mono'); g.textAlign='right'; g.fillText(v.label,ml+pw-4,Y(v.y)-4); g.textAlign='left'; } } });
   (o.vlines||[]).forEach(v=>{ if(v.x>=0&&v.x<=xmax){ g.strokeStyle=v.col; g.setLineDash([4,3]); g.beginPath(); g.moveTo(X(v.x),mt); g.lineTo(X(v.x),mt+ph); g.stroke(); g.setLineDash([]);} });
   o.series.forEach(sr=>{ g.strokeStyle=sr.col; g.lineWidth=2; g.setLineDash(sr.dash||[]); g.beginPath(); sr.x.forEach((xv,i)=>{ const px=X(xv), py=Y(sr.y[i]); i?g.lineTo(px,py):g.moveTo(px,py); }); g.stroke(); g.setLineDash([]); });
   (o.pts||[]).forEach(pt=>{ g.fillStyle=pt.col; g.strokeStyle=css('--panel'); g.lineWidth=2; g.beginPath(); g.arc(X(pt.x),Y(pt.y),5,0,7); g.fill(); g.stroke(); });
@@ -646,28 +758,35 @@ function drawCurves(){
     plot($(id),{title:tt,xlab:'output torque (mN·m)',xmax,ymax,series:ser,vlines:[{x:c.p.tauL,col:ink}],pts:c.stalled?[]:[{x:c.p.tauL,y:opY,col:cu}],hx:HX,yu,fmtX:v=>sig(v,3)+' mN·m'});
   });
   // step
-  const s=STEP, rs=REFSTEP, tmax=Math.max(s.T, rs?rs.T:0), tu= tmax<1? 1e3:1, tl= tmax<1?'ms':'s';
+  const s=STEP, rs=REFSTEP, tmax=Math.max(s.T, rs?rs.T:0), tu= tmax<1? 1e3 : tmax<180? 1 : tmax<3*3600? 1/60 : 1/3600, tl= tmax<1?'ms': tmax<180?'s': tmax<3*3600?'min':'h';
   const tx=a=>a.map(v=>v*tu);
   const sdef=[['sSpeed','Output speed (rpm)','W','rpm'],['sCur','Motor current (A)','I','A']];
   sdef.forEach(([id,tt,key,yu])=>{
     const ser=[{x:tx(s.t),y:s[key],col:cu}]; if(rs) ser.push({x:tx(rs.t),y:rs[key],col:rf,dash:[6,4]});
     const ymax=Math.max(...s[key],rs?Math.max(...rs[key]):0)*1.08||1;
-    plot($(id),{title:tt,xlab:'time ('+tl+')',xmax:tmax*tu,ymax,series:ser,vlines:[{x:c.tm*tu,col:css('--muted')}],hx:HT,yu,fmtX:v=>sig(v,3)+' '+tl});
+    const imin=key==='I'?Math.min(0,...s.I,...(rs?rs.I:[])):0;
+    const ymin=imin<0?imin*1.08:0;
+    plot($(id),{title:tt,xlab:'time ('+tl+')',xmax:tmax*tu,ymin,ymax,series:ser,
+      hlines:key==='I'&&imin<0?[{y:0,col:css('--muted'),label:'i = 0'}]:[],
+      vlines:[{x:c.teff*tu,col:css('--muted')}],hx:HT,yu,fmtX:v=>sig(v,3)+' '+tl});
   });
   // thermal
-  const th=THERM, rth=REFTHERM, tEnd=Math.max(th.tEnd, rth?rth.tEnd:0), useMin=tEnd>180, ts=useMin?1/60:1, tlab=useMin?'min':'s';
-  const tser=[{x:th.t.map(v=>v*ts),y:th.T,col:cu}]; if(rth) tser.push({x:rth.t.map(v=>v*ts),y:rth.T,col:rf,dash:[6,4]});
-  const tmaxT=Math.min(Math.max(th.Tss, rth?rth.Tss:0, TLIM*0.9)*1.1, 450);
-  plot($('thermP'),{title:'Motor temperature (°C), rough lumped estimate',xlab:'time ('+tlab+')',xmax:tEnd*ts,ymax:tmaxT,series:tser,
-    hlines:[{y:th.Tss,col:cu,label:'steady state '+sig(th.Tss)+' °C',tcol:ink},{y:TLIM,col:css('--bad'),label:'class B insulation 130 °C',tcol:css('--bad')},{y:TAMB,col:css('--muted'),label:'ambient 25 °C'}],
+  const th=THERM, rth=REFTHERM, tEnd=Math.max(th.tEnd, rth?rth.tEnd:0), useHr=tEnd>7200, useMin=tEnd>180&&!useHr, ts=useHr?1/3600:useMin?1/60:1, tlab=useHr?'h':useMin?'min':'s';
+  const tser=[{x:th.t.map(v=>v*ts),y:th.T,col:cu},{x:th.t.map(v=>v*ts),y:th.Th,col:css('--steeld')}]; if(rth) tser.push({x:rth.t.map(v=>v*ts),y:rth.T,col:rf,dash:[6,4]});
+  const tmaxT=Math.min(Math.max(...th.T,rth?Math.max(...rth.T):0,th.Tss,rth?rth.Tss:0,TLIM*0.9)*1.1,450);
+  plot($('thermP'),{title:'Winding (copper) and housing (grey) temperature, °C',xlab:'time ('+tlab+')',xmax:tEnd*ts,ymax:tmaxT,series:tser,
+    hlines:[{y:th.Tss,col:cu,label:'winding equilibrium '+sig(th.Tss)+' °C',tcol:ink},{y:th.Thss,col:css('--steeld'),label:'housing '+sig(th.Thss)+' °C'},{y:TLIM,col:css('--bad'),label:'illustrative 130 °C',tcol:css('--bad')},{y:TAMB,col:css('--muted'),label:'ambient 25 °C'}],
     vlines:[{x:c.tth*ts,col:css('--muted')}].concat(isFinite(th.tHit)?[{x:th.tHit*ts,col:css('--bad')}]:[]),hx:HTh,yu:'°C',fmtX:v=>sig(v,3)+' '+tlab});
   const tf=s=>s<120?sig(s,2)+' s':sig(s/60,2)+' min';
-  $('thermcap').innerHTML='Heat in: P = i²R + bω² = '+sig(c.Pcu)+' W copper + '+sig(c.Pfr)+' W friction at your load. Heat out: R<sub>th</sub> = 1/(hA) = '+sig(c.Rth)+' K/W. Heat capacity C<sub>th</sub> = Σ m·c<sub>p</sub> = '+sig(c.Cth)+' J/K, so τ<sub>th</sub> = R<sub>th</sub>C<sub>th</sub> = '+tf(c.tth)+' (grey line). Steady state '+sig(th.Tss)+' °C is reached after about 5τ<sub>th</sub> = '+tf(5*c.tth)+'.'
-    +(isFinite(th.tHit)?' <b>The winding passes 130 °C after about '+tf(th.tHit)+' (red line).</b>':'')
-    +' The mechanical start-up is over in '+tf(STEP.T)+', so the start-up current spike barely affects temperature.';
+  $('thermcap').innerHTML='Two nodes. Copper loss '+sig(c.Pcu)+' W heats the winding; bearing friction '+sig(c.Pfr)+' W heats the housing. Winding to housing R<sub>th1</sub> = '+sig(c.R1th)+' K/W (across the air gap), housing to ambient R<sub>th2</sub> = '+sig(c.R2th)+' K/W (still air). Time constants: winding '+tf(c.tthw)+', motor '+tf(c.tth)+' (grey line). Temperatures start at the selected T = '+sig(c.p.T)+' °C with properties frozen at that temperature.'
+    +(isFinite(th.tHit)?' The winding crosses 130 °C at '+tf(th.tHit)+'.':'')
+    +(th.capped?' Plot capped at 24 h.':'')
+    +' The 130 °C line is illustrative, not a rating for any particular motor.';
   $('stepcap').textContent= c.cm
-   ? 'Current mode: an ideal current-controlled driver holds i = '+sig(c.icmd)+' A, so torque is constant and speed ramps nearly linearly. When back-EMF plus Ri reaches the '+sig(c.em)+' V supply, the driver runs out of voltage, current drops, and the motor behaves like the voltage-driven case. Dashed line: τm = '+tfmt(c.tm)+' for reference.'+(c.stalled?' Load exceeds kT·i, so the motor never moves.':'')
-   : 'Dashed vertical line marks τm = '+tfmt(c.tm)+'. Current spikes to about em/R = '+sig(c.iS)+' A at start-up, limited only by τe = '+tfmt(c.te)+'.'+(s.quasi?' (τe is so short compared with τm that the simulation treats current as instantaneous.)':'')+(c.stalled?' Load exceeds stall torque, so the motor never moves.':'');
+    ? 'Ideal current control: current instantly follows the command subject to the supply-voltage ceiling. Early velocity can ramp, or approach a J/b time constant when friction dominates. After voltage saturation, it follows τeff = '+tfmt(c.teff)+'.'
+    : 'Voltage drive: current begins at zero and rises inductively (τe = '+tfmt(c.te)+'). Approximate reduced-order mechanical constant τeff = '+tfmt(c.teff)+'; inductance may produce two poles. An opposing load can delay rotation until current is sufficient.';
+  if(!STEP.converged) $('stepcap').textContent+=' The step plot reaches its 48-hour display limit before the computed steady state; the thermal model uses the evolving trajectory up to its own 24-hour limit.';
+  if(c.stalled) $('stepcap').textContent+=' The output is stalled under the selected opposing load.';
 }
 ['pSpeed','pCur','pPow','pEff'].forEach(id=>{ const cv=$(id);
   cv.addEventListener('mousemove',e=>{const m=cv._map; if(!m)return; const r=cv.getBoundingClientRect(); HX=(e.clientX-r.left-m.ml)/m.pw*m.xmax; drawCurves();});
@@ -681,7 +800,7 @@ function drawCurves(){
 
 /* ---------- sensitivity ---------- */
 const SIN=[['N','N'],['dw','d<sub>w</sub>'],['d','d'],['l','l'],['hm','h<sub>m</sub>'],['g','g'],['Ng','N<sub>g</sub>'],['rL','r<sub>L</sub>']];
-const SOUT=[['k<sub>T</sub>',c=>c.kT],['R',c=>c.R],['L',c=>c.L],['k<sub>m</sub>',c=>c.km],['J at motor',c=>c.Jt],['stall τ (out)',c=>c.tauSout],['no-load ω (out)',c=>c.w0out],['τ<sub>m</sub>',c=>c.tm],['mass',c=>c.mass]];
+const SOUT=[['k<sub>T</sub>',c=>c.kT],['R',c=>c.R],['L',c=>c.L],['k<sub>m</sub>',c=>c.km],['J at motor',c=>c.Jt],['stall τ (out)',c=>c.tauSout],['no-load ω (out)',c=>c.w0out],['frictionless τ<sub>m</sub>',c=>c.tm],['τ with friction',c=>c.teff],['mass',c=>c.mass]];
 function renderSens(){
   const h0=0.01;
   let t='<tr><th class="rh">output ↓ / input →</th>'+SIN.map(s=>'<th>'+s[1]+'</th>').join('')+'</tr>';
@@ -697,15 +816,15 @@ function renderSens(){
 /* ---------- chips ---------- */
 function renderChips(){
   const c=C, ch=[];
-  const fillCls=c.fill>0.55?'bad':c.fill>0.45?'warn':'ok';
-  ch.push(['Slot fill '+F.fill(c)+(c.fill>0.55?': winding does not fit':''),fillCls]);
+  const fillCls=c.fill>1?'bad':c.fill>0.60?'warn':'ok';
+  ch.push(['Slot fill '+F.fill(c)+(c.fill>1?': impossible with assumed slots':c.fill>0.60?': difficult to manufacture':''),fillCls]);
   ch.push(['B = '+F.B(c)+' in gap (ideal, no leakage)', c.B<0.15?'warn':'ok']);
   if(c.cm) ch.push([c.region==='current'?'Current-limited at your load':c.region==='voltage'?'Voltage-limited at your load':'Stalled', c.region==='stalled'?'bad':'ok']);
   if(c.cm&&c.icmd>c.em/c.R) ch.push(['Command exceeds e_m/R = '+sig(c.em/c.R)+' A: the supply cannot deliver it even at stall','warn']);
   if(c.stalled) ch.push(['Stalled: load exceeds stall torque','bad']);
   ch.push(['Temp. rise ≈ '+F.dT(c), c.dT>100?'bad':c.dT>50?'warn':'ok']);
-  if(c.te>c.tm/5) ch.push(['τe is not ≪ τm: second-order behavior','warn']);
-  if(c.iS>2) ch.push(['Stall current '+F.iS(c),'warn']);
+  if(c.te>c.teff/5) ch.push(['τe is not small relative to τeff: second-order dynamics matter','warn']);
+  if(!STEP.converged) ch.push(['Step plot ends before steady state (48 h limit)','warn']);
   $('chips').innerHTML=ch.map(([t,k])=>'<span class="chip '+k+'">'+t+'</span>').join('');
   $('dB').textContent='→ B = '+F.B(c)+' (Br at temp '+sig(c.Br)+' T)';
   $('dFill').textContent='→ kT = kv = '+sig(c.kT)+' N·m/A = V·s/rad, R = '+F.R(c)+', slot fill '+F.fill(c);
@@ -714,7 +833,7 @@ function renderChips(){
   $('k_em').setAttribute('aria-label',cmx?'supply voltage limit':'applied voltage');
   document.querySelector('label[for=n_em]').innerHTML='<i>e<sub>m</sub></i>'+(cmx?'supply voltage (limit)':'applied voltage');
   $('dDrive').textContent= cmx
-    ? '→ torque = kT·i = '+sig(c.kT*c.icmd*1e3)+' mN·m at the motor, until back-EMF + Ri reaches '+sig(c.em)+' V. At your load the driver is '+(c.region==='current'?'holding the commanded current.':c.region==='voltage'?'out of voltage (current '+sig(c.iss)+' A < command).':'stalled.')
+    ? '→ commanded torque = kT·i_cmd = '+sig(c.kT*c.icmd*1e3)+' mN·m at the motor, subject to the supply-voltage ceiling '+sig(c.em)+' V. At your load the driver is '+(c.region==='current'?'holding the commanded current.':c.region==='voltage'?'out of voltage (current '+sig(c.iss)+' A < command).':'stalled.')
     : '→ the terminal voltage is fixed at '+sig(c.em)+' V; the load decides the current (now '+sig(c.iss)+' A).';
   $('dJL').textContent='→ JL = '+sig(c.JL*1e7)+' g·cm², reflected '+F.JLr(c);
 }
@@ -728,7 +847,7 @@ function update(){
 $('preset').onchange=e=>{P=Object.assign({},PRE[e.target.value]); syncKnobs(); update();};
 $('pin').onclick=()=>{REF=Object.assign({},P); REFC=calc(REF); REFSTEP=stepSim(REFC); REFTHERM=thermSim(REFC,REFSTEP); $('refchip').textContent='Reference pinned: change knobs to compare'; update();};
 /* ---------- report export: fixed column order shared with the homework template ---------- */
-const REPORT_VERSION='1.2';
+const REPORT_VERSION='1.6';
 const REPORT_COLS=['sim_version','sim_N','sim_dw_mm','sim_m','sim_d_mm','sim_l_mm','sim_magnet','sim_hm_mm','sim_g_mm','sim_T_C','sim_em_V','sim_b_uNms',
  'sim_B_T','sim_kT_mNm_per_A','sim_R_ohm','sim_L_mH','sim_J_rotor_gcm2','sim_tau_m_ms','sim_no_load_speed_rpm','sim_no_load_current_A','sim_stall_torque_mNm','sim_stall_current_A','sim_mass_g','sim_D_out_mm','sim_L_out_mm','sim_Rth_K_per_W','sim_slot_fill_pct'];
 function reportRow(){
