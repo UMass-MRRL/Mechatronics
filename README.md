@@ -11,27 +11,35 @@ Six interactive, standalone browser-based teaching simulations covering **electr
 > [!IMPORTANT]
 > **Educational use only.** These simulators are idealized instructional models, not validated engineering design software, hardware test instruments, or safety-analysis tools. Do not use their outputs to select or rate components, establish operating limits, design safety-critical systems, or verify electrical connections without independent analysis, current manufacturer documentation, and appropriate testing. See [Model limitations and disclaimer](#model-limitations-and-disclaimer) and [Detailed model and validation notes](MODEL_NOTES.md).
 
-## Explore the simulators
+## Launch the simulators
 
-Each simulator is a **standalone HTML file**. Download and open it locally, or enable GitHub Pages to run the suite in a browser. The links below point to the files in this repository.
+**[Open the interactive simulator collection](https://umass-mrrl.github.io/Mechatronics/)**
+
+Choose a simulator below to **run it in your browser**. Each image and **Run Online** link opens the interactive GitHub Pages version; **View Source** opens the corresponding HTML in this GitHub repository. No MATLAB, Python, or software installation is required. If a page is not yet available, check that its HTML file has been committed to `main` and that GitHub Pages has finished deploying.
 
 ### Electric motor design and dynamics
 
-| [**Brushed DC Motor**](motor.html) | [**Coreless DC Motor**](coreless.html) | [**Brushless DC Motor**](brushless.html) |
+| Brushed DC Motor | Coreless DC Motor | Brushless DC Motor |
 |:--:|:--:|:--:|
-| [![Brushed DC motor cross-section and design controls](assets/motor.png)](motor.html) | [![Coreless DC motor geometry and design controls](assets/coreless.png)](coreless.html) | [![Brushless motor winding and rotor visualization](assets/brushless.png)](brushless.html) |
+| [![Brushed DC motor cross-section and design controls](assets/motor.png)](https://umass-mrrl.github.io/Mechatronics/motor.html) | [![Coreless DC motor geometry and design controls](assets/coreless.png)](https://umass-mrrl.github.io/Mechatronics/coreless.html) | [![Brushless motor winding and rotor visualization](assets/brushless.png)](https://umass-mrrl.github.io/Mechatronics/brushless.html) |
+| **[▶ Run Online](https://umass-mrrl.github.io/Mechatronics/motor.html)** · [View Source](https://github.com/UMass-MRRL/Mechatronics/blob/main/motor.html) | **[▶ Run Online](https://umass-mrrl.github.io/Mechatronics/coreless.html)** · [View Source](https://github.com/UMass-MRRL/Mechatronics/blob/main/coreless.html) | **[▶ Run Online](https://umass-mrrl.github.io/Mechatronics/brushless.html)** · [View Source](https://github.com/UMass-MRRL/Mechatronics/blob/main/brushless.html) |
 | Winding turns, wire diameter, geometry, magnet selection, load, gearing, torque-speed curves, transient response, and sensitivity. | Ironless winding geometry, rotating copper shell, magnet dimensions, torque and inertia, dynamic response, and thermal trends. | Slotless brushless topology, pole count, stationary phase winding, yoke flux, theoretical iron loss, and commutation visualization. |
 
 ### Digital communication and timing
 
-| [**I²C Bus Inspector**](i2c.html) | [**SPI Bus Inspector**](spi.html) | [**UART / Serial Inspector**](uart.html) |
+| I²C Bus Inspector | SPI Bus Inspector | UART / Serial Inspector |
 |:--:|:--:|:--:|
-| [![I2C bus, controllers, pull-ups, and data lines](assets/i2c.png)](i2c.html) | [![SPI controller, peripherals, and chip-select lines](assets/spi.png)](spi.html) | [![UART transmitter waveform and receiver sampling points](assets/uart.png)](uart.html) |
+| [![I2C bus, controllers, pull-ups, and data lines](assets/i2c.png)](https://umass-mrrl.github.io/Mechatronics/i2c.html) | [![SPI controller, peripherals, and chip-select lines](assets/spi.png)](https://umass-mrrl.github.io/Mechatronics/spi.html) | [![UART transmitter waveform and receiver sampling points](assets/uart.png)](https://umass-mrrl.github.io/Mechatronics/uart.html) |
+| **[▶ Run Online](https://umass-mrrl.github.io/Mechatronics/i2c.html)** · [View Source](https://github.com/UMass-MRRL/Mechatronics/blob/main/i2c.html) | **[▶ Run Online](https://umass-mrrl.github.io/Mechatronics/spi.html)** · [View Source](https://github.com/UMass-MRRL/Mechatronics/blob/main/spi.html) | **[▶ Run Online](https://umass-mrrl.github.io/Mechatronics/uart.html)** · [View Source](https://github.com/UMass-MRRL/Mechatronics/blob/main/uart.html) |
 | Open-drain SDA/SCL, pull-up resistance, clock edges, address selection, ACK/NACK, and register transactions. | SCK, COPI/CIPO (MOSI/MISO), active-low chip select, full-duplex shifting, timing modes, and selected-peripheral behavior. | 8N1 framing, least-significant-bit-first transmission, adjustable transmitter/receiver baud rates, sampling, decoding, and framing errors. |
 
 ## Getting started
 
-### Option A: Open locally
+### Option A: Run online (recommended for students)
+
+Open **[the simulator collection](https://umass-mrrl.github.io/Mechatronics/)** or select **Run Online** above. All simulation controls work directly in the browser once the corresponding HTML file is deployed. GitHub's **View Source** pages show code and do not run the simulators.
+
+### Option B: Open locally
 
 1. Download the repository as a ZIP or clone it.
 2. Open **`index.html`** in a modern desktop browser, or open any simulator HTML file individually.
@@ -39,14 +47,9 @@ Each simulator is a **standalone HTML file**. Download and open it locally, or e
 
 **No installation, build process, MATLAB/Python runtime, or JavaScript framework is required.** The simulation logic runs in the browser. Some pages request optional web fonts; the functional simulations do not depend on those fonts.
 
-### Option B: Publish with GitHub Pages
+### For repository maintainers: GitHub Pages
 
-1. Upload `index.html`, the six simulator `.html` files, `README.md`, and the entire `assets/` directory to the repository root.
-2. Open repository **Settings → Pages**.
-3. Under **Build and deployment**, select **Deploy from a branch**, choose `main` and `/ (root)`, then save.
-4. Once GitHub Pages deploys, use its published site URL to open `index.html` and link to individual simulators.
-
-GitHub's normal source-code preview does **not** run HTML simulations. Use GitHub Pages or download/open the files to interact with them.
+The live links assume this repository is published from the `main` branch, repository root, at `https://umass-mrrl.github.io/Mechatronics/`. To configure or check deployment, open **Settings → Pages**, then verify **Deploy from a branch → main → / (root)**. Keep `index.html`, the six simulator HTML files, `README.md`, and the `assets/` folder at repository root. New uploads may take time to appear on GitHub Pages after a commit.
 
 ### Recommended repository layout
 
@@ -144,7 +147,7 @@ These are references, not an assertion that every scenario has been checked for 
 
 Suggested citation:
 
-> Sup, F. C., IV. (2026). *MIE 443 interactive simulators* [Interactive teaching software]. University of Massachusetts Amherst. Add the repository URL or published site URL when available.
+> Sup, F. C., IV. (2026). *MIE 443 interactive simulators* [Interactive teaching software]. University of Massachusetts Amherst. https://github.com/UMass-MRRL/Mechatronics
 
 **Licensing:** No software license is included with these files. Consider adding a `LICENSE` file if reuse and redistribution should be permitted; a public repository does not itself grant an open-source license. Brand and product names in the illustrations identify example architectures/components and imply **no manufacturer affiliation, endorsement, or performance equivalence**.
 
