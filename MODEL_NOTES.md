@@ -42,8 +42,10 @@ The I²C/SPI example uses the **Adafruit LSM6DS3TR-C breakout**. Its onboard lev
 
 ## Verification status
 
-Browser page loads and selected interactions and equations were tested during development. The simulations have **not** been calibrated against measured motors or verified with logic-analyzer captures.
+Browser page loads and selected interactions and equations were tested during development. The simulations have **not** been calibrated against measured motors or verified with logic-analyzer captures. MATLAB v2.2 was run by the author; v2.7 changes still require native MATLAB verification.
 
 Before using any result for actual hardware, consult primary documentation and make appropriate measurements.
 
 **References:** [Adafruit breakout guide](https://learn.adafruit.com/adafruit-lsm6ds3tr-c-6-dof-accel-gyro-imu/pinouts) · [ST LSM6DS3TR-C datasheet](https://cdn-shop.adafruit.com/product-files/4503/4503_LSM6DS3TR-C_datasheet.pdf) · [NXP I²C-bus specification](https://www.nxp.com/docs/en/user-guide/UM10204.pdf)
+
+**Thermal clarification (v2.7):** Web models already used a 50 K convection reference. MATLAB previously used 0.050 K and has been corrected. Heating traces start at 25 °C in all three web motors and MATLAB. R and Br remain frozen at the reference temperature setting rather than being coupled to heating. Coil counts 3/5/7 affect drawings, not the averaged performance predictions.

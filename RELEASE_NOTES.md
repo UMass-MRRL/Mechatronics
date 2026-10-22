@@ -1,5 +1,8 @@
 # Release notes
 
+- **v2.7 (October 22, 2026):** Correct MATLAB convection, preset reset, reference and playback controls, CSV export, and heating initialization; align browser heating-start behavior and clarify coil count.
+
+
 - **v2.6 (October 22, 2026):** Show flywheel density, mass, output inertia, and motor-reflected inertia. Model assumptions unchanged.
 - **v2.5:** Use output speed (rpm) as the horizontal axis for torque, current, power, and efficiency charts.
 - **v2.4:** Lock graph scales by default; add an automatic starting-design comparison, load line, and overload indication.

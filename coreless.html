@@ -208,7 +208,7 @@ details.assume-wrap[open] summary{margin-bottom:8px}
   </div>
 
   <div class="panel">
-    <h2>Thermal response: same startup, 25 °C ambient, starting at selected T</h2>
+    <h2>Thermal response: starts at 25 °C ambient; properties evaluated at selected T</h2>
     <canvas class="pl" id="thermP" style="height:210px"></canvas>
     <p class="cap" id="thermcap"></p>
     <p class="cap"><b>Thermal caution:</b> Temperatures and any threshold time are outcomes of a simplified two-node heat-transfer model, not validated winding temperatures, rated operating limits, or safe stall times. The selected starting temperature affects parameters; full self-consistent temperature feedback is not solved automatically.</p>
@@ -531,8 +531,8 @@ function thermSim(c,step){
     const u=[x[0]-xs[0], x[1]-xs[1]];
     return [xs[0]+(s0+s1*c.A11)*u[0]+s1*c.A12*u[1], xs[1]+s1*c.A21*u[0]+(s0+s1*c.A22)*u[1]];
   };
-  let x=[c.p.T-TAMB, c.p.T-TAMB], prev=0;
-  const out={t:[0],T:[c.p.T],Th:[c.p.T],tEnd,Tss:TAMB+c.dT,Thss:TAMB+c.dTh,tHit:c.p.T>=TLIM?0:NaN};
+  let x=[0,0], prev=0;  // ambient initial state; properties remain evaluated at p.T
+  const out={t:[0],T:[TAMB],Th:[TAMB],tEnd,Tss:TAMB+c.dT,Thss:TAMB+c.dTh,tHit:TAMB>=TLIM?0:NaN};
   for(let j=1;j<grid.length;j++){
     const t=grid[j], dt=t-prev, sm=tr.stateAt((prev+t)/2);
     const nx=step2(x, sm.i*sm.i*c.R, c.b*sm.w*sm.w, dt);
@@ -890,7 +890,7 @@ function drawCurves(){
     hlines:[{y:th.Tss,col:cu,label:'winding equilibrium '+sig(th.Tss)+' °C',tcol:ink},{y:th.Thss,col:css('--steeld'),label:'housing '+sig(th.Thss)+' °C'},{y:TLIM,col:css('--bad'),label:'illustrative 130 °C',tcol:css('--bad')},{y:TAMB,col:css('--muted'),label:'ambient 25 °C'}],
     vlines:[{x:c.tth*ts,col:css('--muted')}].concat(isFinite(th.tHit)?[{x:th.tHit*ts,col:css('--bad')}]:[]),hx:HTh,yu:'°C',fmtX:v=>sig(v,3)+' '+tlab});
   const tf=s=>s<120?sig(s,2)+' s':sig(s/60,2)+' min';
-  $('thermcap').innerHTML='Two nodes. Copper loss '+sig(c.Pcu)+' W heats the winding; bearing friction '+sig(c.Pfr)+' W heats the housing. Winding to housing R<sub>th1</sub> = '+sig(c.R1th)+' K/W (across the air gap), housing to ambient R<sub>th2</sub> = '+sig(c.R2th)+' K/W (still air). Time constants: winding '+tf(c.tthw)+', motor '+tf(c.tth)+' (grey line). Temperatures start at the selected T = '+sig(c.p.T)+' °C with properties frozen at that temperature.'
+  $('thermcap').innerHTML='Two nodes. Copper loss '+sig(c.Pcu)+' W heats the winding; bearing friction '+sig(c.Pfr)+' W heats the housing. Winding to housing R<sub>th1</sub> = '+sig(c.R1th)+' K/W (across the air gap), housing to ambient R<sub>th2</sub> = '+sig(c.R2th)+' K/W (still air). Time constants: winding '+tf(c.tthw)+', motor '+tf(c.tth)+' (grey line). Temperatures start at ambient 25 °C; R and magnet strength are frozen at the selected reference temperature '+sig(c.p.T)+' °C.'
     +(isFinite(th.tHit)?' The winding crosses 130 °C at '+tf(th.tHit)+'.':'')
     +(th.capped?' Plot capped at 24 h.':'')
     +' The 130 °C line is illustrative, not a rating for any particular motor.';

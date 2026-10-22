@@ -30,7 +30,7 @@ I²C and SPI use an example **Adafruit LSM6DS3TR-C breakout**, which supports 5 
 
 ## Optional MATLAB motor designer
 
-**[Download MATLAB DC Motor Designer v2.6.1 (ZIP)](DCMotorDesignerMATLAB_v2.6.1.zip)**
+**[Download MATLAB DC Motor Designer v2.7 (ZIP)](DCMotorDesignerMATLAB_v2.7.zip)**
 
 Extract the ZIP, set MATLAB's current folder to the extracted files, and run:
 
@@ -38,7 +38,7 @@ Extract the ZIP, set MATLAB's current folder to the extracted files, and run:
 DCMotorDesignerMATLAB
 ```
 
-The graphical demo uses **base MATLAB**; its optional block-diagram generator requires **Simulink**. This is a separate brushed DC model, not an exact replica of the browser version.
+The graphical demo uses **base MATLAB**; its optional block-diagram generator requires **Simulink**. This is a separate brushed DC model, not an exact replica of the browser version. The author has run v2.2; the v2.7 UI changes require a native MATLAB smoke test.
 
 ## Running locally
 
