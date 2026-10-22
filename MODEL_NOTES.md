@@ -42,7 +42,7 @@ The I²C/SPI example uses the **Adafruit LSM6DS3TR-C breakout**. Its onboard lev
 
 ## Verification status
 
-Browser page loads and selected interactions and equations were tested during development. The simulations have **not** been calibrated against measured motors or verified with logic-analyzer captures. MATLAB v2.2 was run by the author; v2.6 changes still require native MATLAB verification.
+Browser page loads and selected interactions and equations were tested during development. The simulations have **not** been calibrated against measured motors or verified with logic-analyzer captures.
 
 Before using any result for actual hardware, consult primary documentation and make appropriate measurements.
 
