@@ -30,7 +30,7 @@ I²C and SPI use an example **Adafruit LSM6DS3TR-C breakout**, which supports 5 
 
 ## Optional MATLAB motor designer
 
-**[Download MATLAB DC Motor Designer v2.6 (ZIP)](DCMotorDesignerMATLAB_v2.6.zip)**
+**[Download MATLAB DC Motor Designer v2.6.1 (ZIP)](DCMotorDesignerMATLAB_v2.6.1.zip)**
 
 Extract the ZIP, set MATLAB's current folder to the extracted files, and run:
 
