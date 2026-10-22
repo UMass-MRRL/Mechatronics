@@ -38,7 +38,7 @@ Extract the ZIP, set MATLAB's current folder to the extracted files, and run:
 DCMotorDesignerMATLAB
 ```
 
-The graphical demo uses **base MATLAB**; its optional block-diagram generator requires **Simulink**. This is a separate brushed DC model, not an exact replica of the browser version. The author has run v2.2; the later v2.6 UI revisions have not been independently runtime-tested.
+The graphical demo uses **base MATLAB**; its optional block-diagram generator requires **Simulink**. This is a separate brushed DC model, not an exact replica of the browser version.
 
 ## Running locally
 
