@@ -364,8 +364,14 @@ function calc(p){
   const Aslot=0.45*PI*d*d/4, fill=2*N*Aw/Aslot;
   const L=MU0*N*N*l*d/(2*(g+hm/M.mu))/(a*a);
   const Jr=(PI/32)*RHO_ROT*l*Math.pow(d,4);
-  const JL=(PI/2)*RHO_ST*(p.tL*mm)*Math.pow(p.rL*mm,4);
+  // Load flywheel is a solid steel disk on the gearbox OUTPUT shaft.
+  // SI first: m = rho*pi*r^2*t; J = (1/2)*m*r^2 about its central shaft.
+  // Input-referred inertia for an ideal fixed-ratio gearbox is J/N_g^2.
+  const flyR=p.rL*mm, flyT=p.tL*mm;
+  const mFly=RHO_ST*PI*flyR*flyR*flyT;
+  const JL=0.5*mFly*flyR*flyR;
   const Ng=p.Ng, eg=p.eg/100;
+  // Ideal kinematic reflection. Gear efficiency affects static opposing load torque only.
   const Jt=Jr+JL/(Ng*Ng);
   const b=p.b*1e-6, em=p.em;
   const tLm=(p.tauL*1e-3)/(Ng*eg);
@@ -425,7 +431,7 @@ function calc(p){
   const a0=Math.max(0,tauS-tLm)/Jt/Ng;
   const rLoad=(p.tauL*1e-3)/(eg*tauS);
   const NaccOpt=rLoad+Math.sqrt(rLoad*rLoad+JL/Jr);
-  return {p,M,Br,B,kT,R,R20,L,a,a0,cm,icmd,iAt,region,zeroReg,vop,Aw,lt,fill,Jr,JL,Jt,Ng,eg,b,em,tLm,tauS,iS,w0,i0,wss,iss,stalled,cur,Pmax,emax,Pop,Pin,effop,Pcu,Pfr,Ploss,Rth,R1th,R2th,Cw,Ch,A11,A12,A21,A22,lamS,lamF,tthw,dTh,Cth,tth,dT,Dout,Lout,wall,mass,te,tm,teff,poles,NaccOpt,
+  return {p,M,Br,B,kT,R,R20,L,a,a0,cm,icmd,iAt,region,zeroReg,vop,Aw,lt,fill,Jr,JL,mFly,Jt,Ng,eg,b,em,tLm,tauS,iS,w0,i0,wss,iss,stalled,cur,Pmax,emax,Pop,Pin,effop,Pcu,Pfr,Ploss,Rth,R1th,R2th,Cw,Ch,A11,A12,A21,A22,lamS,lamF,tthw,dTh,Cth,tth,dT,Dout,Lout,wall,mass,te,tm,teff,poles,NaccOpt,
     km:kT/Math.sqrt(R), tauSout:tauS*Ng*eg, w0out:w0/Ng, Nopt:p.rL>0&&p.tL>0?Math.sqrt(JL/Jr):NaN};
 }
 /* Exact time response for the idealized piecewise-linear model. No ODE steps or 60 s
@@ -608,8 +614,12 @@ gap:()=>'<h3>Air gap g = '+p.g+' mm</h3><p>Air-gap reluctance reduces the flux d
    rotor:()=>'<h3>Rotor (armature)</h3><p>A steel cylinder, d = '+p.d+' mm, l = '+p.l+' mm. Diameter sets the lever arm for the conductor force, so k<sub>T</sub> grows with d. Inertia grows with d⁴.</p>'+eq('J<sub>rotor</sub> = (π/32)·ρ·l·d⁴ = '+F.Jr(c)),
    comm:()=>'<h3>Plane of commutation</h3><p>The brushes reverse a coil\'s current as it crosses this line, halfway between the poles. Without that reversal the torque would change sign every half turn and the rotor would just rock like a spring.</p>',
    housing:()=>'<h3>Housing / back iron</h3><p>Steel can that carries the return flux between the poles. Here it is '+sig(c.wall*1e3)+' mm thick. Heat from the winding must first cross the air gap to reach it, then leave its outside surface.</p>'+eq('R<sub>th1</sub> = 1/(h<sub>gap</sub>·π d (l + d)) = 1/(40 W/m²K · '+sig(PI*c.p.d*(c.p.l+c.p.d)/100)+' cm²) = '+sig(c.R1th)+' K/W')+eq('R<sub>th2</sub> = 1/(h·A<sub>surface</sub>) = 1/('+sig(1.32*Math.pow(50/c.Dout,0.25)+6)+' W/m²K · '+sig((PI*c.Dout*c.Lout+PI*c.Dout*c.Dout/2)*1e4)+' cm²) = '+sig(c.R2th)+' K/W')+eq('ΔT<sub>housing</sub> = (i²R + bω²)·R<sub>th2</sub> = '+sig(c.dTh)+' °C'),
-gear:()=>'<h3>Gearhead '+p.Ng+':1</h3><p>The motor sees J<sub>rotor</sub>+J<sub>L</sub>/N<sub>g</sub>². The simple model applies gear efficiency to opposing load torque, not to load inertia.</p>'+eq('J = J<sub>rotor</sub>+J<sub>L</sub>/N<sub>g</sub>² = '+F.Jt(c))+eq('τ<sub>L,motor</sub> = τ<sub>L</sub>/(N<sub>g</sub>η<sub>g</sub>) = '+sig(c.tLm*1e3)+' mN·m')+(isFinite(c.Nopt)?'<p>No-load inertia matching: √(J<sub>L</sub>/J<sub>rotor</sub>) = '+sig(c.Nopt)+'.</p>':'')+(isFinite(c.NaccOpt)?eq('N<sub>g</sub>* = r+√(r²+J<sub>L</sub>/J<sub>rotor</sub>) = '+sig(c.NaccOpt)+'; r=τ<sub>L</sub>/(η<sub>g</sub>τ<sub>s,motor</sub>)')+'<p>The mathematical optimum assumes fixed η<sub>g</sub> and unconstrained gear ratio. The slider permits only ratios from 1 to 300.</p>':''),
-   fly:()=>'<h3>Load flywheel</h3><p>Steel disk, r = '+p.rL+' mm, t = '+p.tL+' mm.</p>'+eq('J<sub>L</sub> = ½ m r² = (π/2)·ρ·t·r⁴ = '+sig(c.JL*1e7)+' g·cm²')+'<p>Radius enters to the fourth power. Doubling r multiplies J<sub>L</sub> by 16.</p>',
+gear:()=>'<h3>Gearhead '+p.Ng+':1</h3><p>N<sub>g</sub> = ω<sub>motor</sub>/ω<sub>output</sub>; the flywheel is mounted AFTER the gearhead. The motor sees J<sub>rotor</sub>+J<sub>L,output</sub>/N<sub>g</sub>². This ideal inertia reflection ignores gear train inertia and acceleration losses. The selected gear efficiency is applied only to opposing external load torque.</p>'+eq('J = J<sub>rotor</sub>+J<sub>L</sub>/N<sub>g</sub>² = '+F.Jt(c))+eq('τ<sub>L,motor</sub> = τ<sub>L</sub>/(N<sub>g</sub>η<sub>g</sub>) = '+sig(c.tLm*1e3)+' mN·m')+(isFinite(c.Nopt)?'<p>No-load inertia matching: √(J<sub>L</sub>/J<sub>rotor</sub>) = '+sig(c.Nopt)+'.</p>':'')+(isFinite(c.NaccOpt)?eq('N<sub>g</sub>* = r+√(r²+J<sub>L</sub>/J<sub>rotor</sub>) = '+sig(c.NaccOpt)+'; r=τ<sub>L</sub>/(η<sub>g</sub>τ<sub>s,motor</sub>)')+'<p>The mathematical optimum assumes fixed η<sub>g</sub> and unconstrained gear ratio. The slider permits only ratios from 1 to 300.</p>':''),
+   fly:()=>'<h3>Flywheel on the gearbox OUTPUT shaft</h3><p>Solid steel disk (assumed density ρ = 7,850 kg/m³); r = '+p.rL+' mm, t = '+p.tL+' mm. The disk is solid and uniform; hub/fixture inertia is excluded.</p>'
+      +eq('m = ρπr²t = '+sig(c.mFly*1e3)+' g')
+      +eq('J<sub>L,output</sub> = ½mr² = (π/2)ρtr⁴ = '+sig(c.JL*1e7)+' g·cm²')
+      +eq('J<sub>L,motor</sub> = J<sub>L,output</sub>/N<sub>g</sub>² = '+sig(c.JL/(c.Ng*c.Ng)*1e7)+' g·cm² (N<sub>g</sub> = '+c.Ng+':1)')
+      +'<p>For an ideal gearbox N<sub>g</sub> = ω<sub>motor</sub>/ω<sub>output</sub>. At 1:1 the inertias are equal; at 10:1 the motor sees 1/100 of the output inertia. Inertia reflection excludes gear train inertia and gearbox acceleration losses. Radius affects flywheel inertia to the fourth power at fixed thickness.</p>',
 torque:()=>'<h3>Applied output load torque τ<sub>L</sub> = '+p.tauL+' mN·m</h3><p>A constant torque opposing positive rotation; the rotor cannot move backwards in this model.</p>'+eq(c.stalled?'Motor is stalled: ω = 0, i = i<sub>s</sub> = '+F.iS(c):c.region==='current'?'ω = (k<sub>T</sub>i<sub>cmd</sub>−τ<sub>L,motor</sub>)/b = '+F.wop(c):'ω = (k<sub>T</sub>e<sub>m</sub>/R−τ<sub>L,motor</sub>)/(b+k<sub>T</sub>²/R) = '+F.wop(c)),
   };
   const nmap={
@@ -956,7 +966,8 @@ function renderChips(){
   $('dDrive').textContent= cmx
     ? '→ commanded torque = kT·i_cmd = '+sig(c.kT*c.icmd*1e3)+' mN·m at the motor, subject to the supply-voltage ceiling '+sig(c.em)+' V. At your load the driver is '+(c.region==='current'?'holding the commanded current.':c.region==='voltage'?'out of voltage (current '+sig(c.iss)+' A < command).':'stalled.')
     : '→ the terminal voltage is fixed at '+sig(c.em)+' V; the load decides the current (now '+sig(c.iss)+' A).';
-  $('dJL').textContent='→ JL = '+sig(c.JL*1e7)+' g·cm², reflected '+F.JLr(c);
+  $('dJL').innerHTML='→ Solid steel disk · density ρ = 7,850 kg/m³ · mass = '+sig(c.mFly*1e3)+' g'
+    +'<br>J<sub>L</sub> (output shaft) = '+sig(c.JL*1e7)+' g·cm²; motor-reflected J<sub>L</sub>/N<sub>g</sub>² = '+sig(c.JL/(c.Ng*c.Ng)*1e7)+' g·cm² (N<sub>g</sub> = '+c.Ng+':1)';
 }
 
 /* ---------- update ---------- */

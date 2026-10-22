@@ -1,97 +1,49 @@
-# Model assumptions and validation status
+# Model notes
 
-This document accompanies the six HTML teaching simulations for MIE 443 Mechatronics. It describes **what is actually represented**, not what a commercial motor, peripheral, or development board is guaranteed to do. Page and code comments are part of the teaching documentation.
+These notes describe the **assumptions and limits** of the MIE 443 simulators. The goal is to understand cause and effect, not to reproduce a particular manufacturer's hardware.
 
-## Status, scope, and definitions
+## Motor models
 
-- **Educational only.** No model or interface has been calibrated or qualified as an engineering design or hardware safety tool.
-- **Software checks:** Prior development exercises included Chromium page loads, representative control/state interactions, transaction byte inspection, and selected analytical motor equation checks. For this documentation revision, page loads and controls are checked again. These checks do not establish comprehensive absence of defects.
-- **Experimental validation:** Not performed for these release files. No systematic comparison to an identified motor's measured speed, torque, current, or temperature; no oscilloscope/logic-analyzer capture proving bus timing; no tolerance or uncertainty characterization.
-- **Presets:** Illustrative parameter sets and form factors, not vendor-provided motor data or certified ratings. Brands mentioned to explain topology are not vendors of these simulations.
-- **Visuals:** Scale bars/selected dimension ratios support intuition. Winding patterns, magnetic flux, internal structure, commutators, pole fields, and board layout remain conceptual drawings.
-
-A checked equation can still provide a poor prediction when its assumptions are inappropriate. Conversely, a believable-looking curve does not establish that the underlying equations are correct.
-
-## Brushed DC motor (`motor.html`)
-
-Representative state equations in voltage-drive mode:
+The simplified motor dynamics are:
 
 ```text
 L di/dt = V - R i - k_e omega
-J d(omega)/dt = k_T i - b omega - tau_load,motor
+J d(omega)/dt = k_T i - b omega - tau_load
 ```
 
-In SI units, the model takes `k_e = k_T`. Wire length/resistance, an idealized magnet/air-gap circuit, lumped inertia, gearbox efficiency, and viscous friction determine the coefficients. The voltage-drive transient permits signed current. A simplified current-mode source saturates at a selected voltage; it is not a real current regulator or PWM/H-bridge model.
+The models calculate winding resistance and motor constants from idealized construction choices. Gearboxes, friction, iron loss, and two-node thermal behavior use lumped approximations. Current-source operation assumes an idealized regulator with a voltage ceiling; motor electronics are not simulated in detail.
 
-Not included: detailed armature winding/commutator waveforms, local pole saturation, magnetic leakage and armature reaction, brush voltage drop and sparking, bearing nonlinearities, gearbox backlash and individual mesh losses, supply sag, manufacturing tolerances, winding hot spots, and fully coupled electrothermal dynamics. Maximum output power is a **modeled** maximum on a calculated curve, not a continuous rating. Illustrative thermal thresholds are not safe-stall specifications.
+- **Brushed DC:** idealized windings and magnet circuit; no brush switching waveforms, armature reaction, or detailed saturation.
+- **Coreless DC:** simplified self-supporting winding shell; actual end turns, adhesives, commutator, and manufacturability are not modeled.
+- **Brushless DC:** equivalent averaged motor model. Switching between six-step and sinusoidal commutation changes the *illustration*, not the calculated inverter currents or torque ripple. Saturation flags indicate where the magnetic model is unreliable.
 
-## Coreless DC motor (`coreless.html`)
+The motor plots show **model-predicted** torque, current, output power, efficiency, temperature, and transient response. Stall torque and maximum mechanical power are **not continuous-duty ratings**. Presets illustrate architectures, not calibrated maxon/FAULHABER products.
 
-The simplified rotating-shell topology emphasizes magnet size, copper fill, winding turn count/style, inertia, and absence of iron rotor cogging. Winding volume, length, resistance, mass and inertia use the simulator's selected geometric idealizations rather than complete manufacturable winding construction. Differences between a skewed/rhombic and straight winding are model-dependent.
+### Flywheel and gearing
 
-The modeled shell does not reproduce all self-supporting coil adhesives, end turns, commutator geometry, flux nonuniformity or assembly details. Manufacturer series and part-family names indicate **similar architectures**, not a validated simulation of a specific maxon or FAULHABER product.
+The optional flywheel is a **solid steel disk** on the gearbox output shaft, using density `rho = 7,850 kg/m^3`:
 
-## Brushless DC motor (`brushless.html`)
+```text
+m = rho*pi*r^2*t
+J_output = (1/2)*m*r^2
+J_reflected_to_motor = J_output/N^2
+N = motor speed / output speed
+```
 
-The simulator uses a lumped equivalent motor and an idealized slotless magnetic circuit. Poles, winding dimensions and yoke thickness affect calculated constants and an illustrative iron-loss term. The saturation indicator warns when the unsaturated model may no longer apply.
+Thus a 10:1 reduction makes the motor see 1/100 of the flywheel inertia. The models omit gear-train inertia, disk hubs, and acceleration-related gearbox losses. The gear-efficiency input affects the opposing external load torque, not the reflected inertia calculation.
 
-**Critical distinction:** The commutation selector visually contrasts block/six-step and sinusoidal patterns; the simulator does **not** independently solve distinct switching, phase currents, torque ripple, inverter losses, field-oriented control or sensorless estimation. Local linearized iron loss is neither a universal Steinmetz fit nor a valid zero-speed breakaway torque. Numerical outputs outside the saturation assumption remain visible for discussion, not design.
+## Bus models
 
-## I²C (`i2c.html`)
+- **I²C:** example transactions, register values, pull-up RC behavior, and ACK/NACK. The trace omits arbitration, clock stretching, and detailed board timing.
+- **SPI:** clock edges, active-low selection, and full-duplex transfers. The RC edge model does not validate a device's maximum clock rate or signal integrity.
+- **UART:** ideal 8N1 transmission and fixed-center sampling. No oversampling, noise, jitter, or actual UART hardware implementation.
 
-The page illustrates addressed transfers, START/STOP, bit order, ACK/NACK, repeated START, example MCU/peripheral behavior and example IMU registers. Rise-time intuition is based on a first-order pull-up/line-capacitance model. Example traffic is deterministic; bus arbitration, clock stretching, glitches, SMBus features, controller-specific delays and real device firmware behavior are not comprehensive.
+The I²C/SPI example uses the **Adafruit LSM6DS3TR-C breakout**. Its onboard level shifting makes the breakout suitable for 5 V controller logic; the bare LSM6DS3TR-C IC is **not** 5 V tolerant. Example measurement bytes and sample code are instructional, not hardware-tested.
 
-The example Adafruit LSM6DS3TR-C **breakout** supports 3–5 V controller logic because it has a regulator and level shifting. The **bare sensor IC is not 5 V tolerant**. The breakout includes 10 kΩ I²C pull-ups. Check all other board pull-ups, the chosen supply voltage, device operating modes and actual bus speed before wiring. Example addresses and registers are grounded in the component references, but example measurement bytes are intentionally illustrative.
+## Verification status
 
-## SPI (`spi.html`)
+Browser page loads and selected interactions and equations were tested during development. The simulations have **not** been calibrated against measured motors or verified with logic-analyzer captures. MATLAB v2.2 was run by the author; v2.6 changes still require native MATLAB verification.
 
-The page illustrates independent active-low CS lines, clock phases/polarities, simultaneous data shifting, register exchange, and conflicting peripheral outputs. Its output-impedance and capacitance model is intended for first-order edge-rate intuition only. It does not certify clock frequency, timing margins, setup/hold times, chip-select requirements, line ringing, crosstalk, or specific microcontroller peripheral behavior. Conceptual code snippets are not independently compiled/tested Arduino library examples.
+Before using any result for actual hardware, consult primary documentation and make appropriate measurements.
 
-## UART (`uart.html`)
-
-An ideal transmitter sends repeated 8N1 frames, least-significant bit first. The modeled receiver detects the first start edge and samples eight data centers and a stop-bit center at its own selected baud rate. Changing the transmitter rate changes bit duration, not the bit pattern; baud mismatch can shift samples to different transmitted bits.
-
-The receiver does not model real oversampling, jitter, noise, false-start rejection, resynchronization, FIFO overruns, parity, baud generators or physical transceiver voltage levels. A HIGH stop sample does not prove correct data.
-
-## Suggested student reporting language
-
-> “The simulator predicted **X** under its assumed parameters. This is not a rated specification. Our independent calculation/measurement was **Y**, and the discrepancy may be explained by **Z**.”
-
-Do not report the simulator's temperature threshold as a safe stall time, compare different preset motors as if all other factors were controlled, or cite model-derived maximum mechanical power as nameplate continuous power.
-
-## Relevant primary documentation
-
-- Adafruit LSM6DS3TR-C breakout: https://learn.adafruit.com/adafruit-lsm6ds3tr-c-6-dof-accel-gyro-imu/pinouts
-- ST LSM6DS3TR-C datasheet: https://cdn-shop.adafruit.com/product-files/4503/4503_LSM6DS3TR-C_datasheet.pdf
-- NXP I²C-bus specification (UM10204): https://www.nxp.com/docs/en/user-guide/UM10204.pdf
-
-## Change history
-
-**2026-10-21 publication-documentation revision:** Clarified scope in every simulator; renamed motor drawing headings; removed vendor-like descriptions from example preset labels; qualified output panels and thermal plots; inserted modeling comments adjacent to implementation; expanded README with interpretation guide, references, model notes, and experimental-validation status. The mathematical and protocol simulation algorithms were intentionally left unchanged; numerical equivalence should still be independently tested before formal classroom release.
-
-
-## Conventional motor torque-speed chart (2026-10-21 update)
-
-The three motor designs expose the theoretical steady-state **available torque**
-(mN·m) against **output speed** (rpm), with the conventional axis orientation:
-speed on X and torque on Y. The plotted stall intercept is the model's
-instantaneous available output torque at zero speed, not a safe sustained
-stall rating. The no-load intercept is calculated with modeled viscous losses,
-not necessarily a measured datasheet no-load speed. The selected operating
-point indicates the equilibrium under the user-specified constant load;
-when this load exceeds stall capability, the motor is marked stalled at its
-available stall torque instead of falsely plotting an impossible operating torque.
-
-For voltage drive and positive constant coefficients, the plot is linear.
-For current drive, an ideal instantaneous current ceiling can produce a
-piecewise-linear characteristic, limited ultimately by the modeled supply
-voltage. Brushless magnetics and commutation remain averaged/idealized.
-Motor performance curves must not be used as continuous operating envelopes.
-
-## Shared output-speed plots (2026-10-21 update)
-
-The brushed, coreless and brushless web motor pages use **output shaft speed (rpm)** as the horizontal coordinate for all five steady-state graphics: the primary torque-speed diagram and detailed torque, motor current, mechanical output power, and efficiency diagrams. The original model still computes characteristic samples parametrically and reverses sample order to ensure ascending speed for correct hover interpolation. No motor equations are changed.
-
-Every chart uses the *same speed limit*, selected by Locked to starting baseline or Auto-fit. Torque, current and mechanical output power have their own vertical scales. In locked mode, each vertical scale is based on the starting baseline; curves can be clipped when a parameter is changed substantially and the interface displays a warning. Efficiency is displayed on a 0–100% scale. In auto-fit mode, the plotting range is expanded for the current, starting and pinned designs.
-
-The selected operating speed is shown on all detailed graphs only when the requested torque is achievable. When the motor is stalled by an excessive demand, these graphs deliberately omit a misleading loaded operating marker. A black marker identifies the sampled *theoretical maximum* on each power and efficiency curve. It does not establish continuous-duty power, temperature limits, or a safe operating point. The graph does not model torque ripple, inverter efficiency, switching losses, or nonlinear saturation.
+**References:** [Adafruit breakout guide](https://learn.adafruit.com/adafruit-lsm6ds3tr-c-6-dof-accel-gyro-imu/pinouts) · [ST LSM6DS3TR-C datasheet](https://cdn-shop.adafruit.com/product-files/4503/4503_LSM6DS3TR-C_datasheet.pdf) · [NXP I²C-bus specification](https://www.nxp.com/docs/en/user-guide/UM10204.pdf)
