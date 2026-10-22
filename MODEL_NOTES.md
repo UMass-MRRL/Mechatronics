@@ -87,3 +87,30 @@ For current drive, an ideal instantaneous current ceiling can produce a
 piecewise-linear characteristic, limited ultimately by the modeled supply
 voltage. Brushless magnetics and commutation remain averaged/idealized.
 Motor performance curves must not be used as continuous operating envelopes.
+
+
+## Torque-speed display and locked axes (October 2026 update)
+
+All three motor pages show **torque (mN·m) versus output speed (rpm)** on
+one common plot. A dotted initial-design curve remains visible by default.
+The initial fixed axes extend to approximately 2.25 times the starting
+no-load speed and stall torque, leaving enough room for a typical 2x
+voltage experiment. **Those bounds are a visualization choice, not a motor
+limit.** Large changes can extend beyond this frame; an explicit warning
+appears. Choose **Auto-fit all curves and load** to display the full curves
+and applied load, or **Use current design as baseline** to capture a new
+fixed comparison scale. Auto-fit may make curves look similar again because
+it changes the axes.
+
+The red horizontal load line is an external torque demand. Where it
+intersects an attainable steady torque-speed characteristic, the marker is
+the modeled operating point. If demanded load torque exceeds predicted
+starting torque, no positive-speed equilibrium is available in these
+models. The simulator reports a **stalled/unmet** demand rather than
+plotting the unachievable load as an operating point. The red cross at
+zero speed marks demand, not torque delivered by the motor.
+
+These edits affect **visualization only**. The steady-state, electrical,
+mechanical, and thermal motor equations have not been changed. The
+associated MATLAB v2.4 GUI now uses a matching visualization convention;
+it requires native MATLAB runtime verification before classroom release.

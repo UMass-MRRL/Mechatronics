@@ -83,7 +83,13 @@ svg [data-k]:hover{filter:brightness(1.12)}
 .plots{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 @media (max-width:700px){.plots{grid-template-columns:1fr}}
 canvas.pl{width:100%;height:170px;display:block;cursor:crosshair}
-canvas.pl.ts-primary{height:255px;max-width:100%}
+canvas.pl.ts-primary{height:270px;max-width:100%}
+.ts-tools{display:flex;flex-wrap:wrap;gap:7px 12px;align-items:center;margin:9px 0 10px;padding:8px 10px;background:var(--soft);border:1px solid var(--line);border-radius:6px}
+.ts-tools label{font-size:.86rem;font-weight:700}
+.ts-tools select{max-width:100%}
+.ts-tools button{font-weight:600}
+.ts-tools .cap{flex-basis:100%}
+.ts-warning{color:var(--bad);font-weight:700}
 .ts-summary{display:flex;flex-wrap:wrap;gap:7px 20px;padding:8px 0 10px;font-size:.86rem;color:var(--ink)}
 .ts-summary b{color:var(--brandfg)}
 .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:.82rem;color:var(--muted);margin-bottom:6px}
@@ -175,10 +181,16 @@ details.assume-wrap[open] summary{margin-bottom:8px}
 
   <div class="panel">
     <h2>Steady-state curves at the output shaft</h2>
-    <div class="legend"><span><span class="sw" style="background:var(--cu)"></span>This design</span><span id="lgref" hidden><span class="sw" style="background:var(--ref)"></span>Reference (dashed)</span><span>Orange dot = operating point; vertical line in additional views = selected load. Hover for values.</span></div>
+    <div class="legend"><span><span class="sw" style="background:var(--cu)"></span>This design (solid)</span><span><span class="sw" style="background:var(--muted)"></span>Starting baseline (dotted)</span><span id="lgref" hidden><span class="sw" style="background:var(--ref)"></span>Reference (dashed)</span><span>Orange dot = operating point; vertical line in additional views = selected load. Hover for values.</span></div>
     <!-- Traditional performance convention: SPEED is the horizontal axis, TORQUE is the vertical axis.
          The existing four torque-indexed charts below remain for complementary comparisons. -->
-    <div class="model-note" role="note" style="margin-bottom:8px"><b>Classic torque-speed characteristic:</b> Horizontal axis = output speed (rpm); vertical axis = available output torque (mN·m). At fixed voltage the ideal viscous-friction model gives a straight line; an ideal current command can introduce a piecewise slope. The selected load sets the operating point, not the curve shape. This is not a continuous-duty torque envelope.</div>
+    <div class="model-note" role="note" style="margin-bottom:8px"><b>Classic torque-speed characteristic:</b> Horizontal axis = output speed (rpm); vertical axis = available output torque (mN·m). At fixed voltage the ideal viscous-friction model gives a straight line; an ideal current command can introduce a piecewise slope. The selected load sets the operating point, not the curve shape. The dashed horizontal line represents the requested load torque. Axes are held to the starting design until you change scaling. This is not a continuous-duty torque envelope.</div>
+    <div class="ts-tools" aria-label="Torque-speed plotting controls">
+      <label for="tsScaleMode">Axis scaling</label>
+      <select id="tsScaleMode" aria-label="Torque-speed axis scaling"><option value="locked">Locked to starting baseline</option><option value="fit">Auto-fit all curves and load</option></select>
+      <button type="button" id="tsResetBaseline">Use current design as baseline</button>
+      <span class="cap" id="tsScaleHint">The axes stay fixed while you adjust the motor. The dotted curve is the starting design.</span>
+    </div>
     <canvas class="pl ts-primary" id="pTorqueSpeed" aria-label="Conventional motor torque versus speed curve. Horizontal axis is speed in rpm; vertical axis is output torque in millinewton meters."></canvas>
     <div id="tsSummary" class="ts-summary" aria-live="polite"></div>
     <h3 style="font-size:.92rem;margin:8px 0 5px">Additional performance views (torque on horizontal axis)</h3>
@@ -735,7 +747,10 @@ function plot(cv,o){
   (o.hlines||[]).forEach(v=>{ if(v.y>=ymin&&v.y<=ymax){ g.strokeStyle=v.col; g.setLineDash([5,4]); g.beginPath(); g.moveTo(ml,Y(v.y)); g.lineTo(ml+pw,Y(v.y)); g.stroke(); g.setLineDash([]); if(v.label){ g.fillStyle=v.tcol||mut; g.font='10px '+css('--f-mono'); g.textAlign='right'; g.fillText(v.label,ml+pw-4,Y(v.y)-4); g.textAlign='left'; } } });
   (o.vlines||[]).forEach(v=>{ if(v.x>=0&&v.x<=xmax){ g.strokeStyle=v.col; g.setLineDash([4,3]); g.beginPath(); g.moveTo(X(v.x),mt); g.lineTo(X(v.x),mt+ph); g.stroke(); g.setLineDash([]);} });
   o.series.forEach(sr=>{ g.strokeStyle=sr.col; g.lineWidth=2; g.setLineDash(sr.dash||[]); g.beginPath(); sr.x.forEach((xv,i)=>{ const px=X(xv), py=Y(sr.y[i]); i?g.lineTo(px,py):g.moveTo(px,py); }); g.stroke(); g.setLineDash([]); });
-  (o.pts||[]).forEach(pt=>{ g.fillStyle=pt.col; g.strokeStyle=css('--panel'); g.lineWidth=2; g.beginPath(); g.arc(X(pt.x),Y(pt.y),5,0,7); g.fill(); g.stroke(); });
+  (o.pts||[]).forEach(pt=>{ g.fillStyle=pt.col; g.strokeStyle=css('--panel'); g.lineWidth=2; g.beginPath(); if(pt.kind==='cross'){
+    const px=X(pt.x)+5,py=Y(pt.y);g.strokeStyle=pt.col;g.lineWidth=2.5;
+    g.moveTo(px-5,py-5);g.lineTo(px+5,py+5);g.moveTo(px-5,py+5);g.lineTo(px+5,py-5);g.stroke();
+  }else{g.arc(X(pt.x),Y(pt.y),5,0,7);g.fill();g.stroke();} });
   g.restore();
   if(o.hx!=null && o.hx>=0 && o.hx<=xmax){
     const hy=interp(o.series[0].x,o.series[0].y,o.hx);
@@ -747,6 +762,17 @@ function plot(cv,o){
   cv._map={ml,pw,xmax};
 }
 function interp(xs,ys,x){ if(!xs.length) return NaN; if(x<=xs[0]) return ys[0]; for(let i=1;i<xs.length;i++){ if(xs[i]>=x){ const f=(x-xs[i-1])/((xs[i]-xs[i-1])||1); return ys[i-1]+f*(ys[i]-ys[i-1]); } } return NaN; }
+// BASELINE is captured automatically on page load and whenever the preset changes.
+// Locked axes are deliberately held constant as knobs move; use auto-fit for
+// designs outside that range, or reset the baseline to recenter the lesson.
+let BASELINE=null, BASESCALE=null, TSSCALEMODE='locked';
+function setBaseline(){
+  BASELINE=calc(Object.assign({},P));
+  // Reserve enough common plotting space for a 2x speed/torque voltage sweep.
+  // This is a plotting choice, NOT a physical or rated motor limit.
+  BASESCALE={x:Math.max(1,BASELINE.w0out*60/(2*PI)*2.25),
+             y:Math.max(1,BASELINE.tauSout*1e3*2.25)};
+}
 let STEP, REFC=null, REFSTEP=null, THERM, REFTHERM=null, HTh=null, HSpeed=null;
 function drawCurves(){
   const c=C, r=REFC, cu=css('--cu'), rf=css('--ref'), ink=css('--ink');
@@ -756,26 +782,40 @@ function drawCurves(){
   // requires ascending horizontal coordinates for meaningful hover readings.
   const rpm = m => m.w0out * 60/(2*PI);
   const speedSeries = m => ({x:[...m.cur.w].reverse(), y:[...m.cur.t].reverse()});
-  const primary = speedSeries(c), reference = r ? speedSeries(r) : null;
-  const ratedSpeed = rpm(c), opSpeed = c.wss/c.Ng*60/(2*PI);
-  const maxSpeed = Math.max(ratedSpeed, r ? rpm(r) : 0);
-  const maxTorque = Math.max(c.tauSout*1e3, r ? r.tauSout*1e3 : 0);
-  const opTorque = c.stalled ? c.tauSout*1e3 : c.p.tauL;
-  const primarySeries = [{...primary,col:cu}];
-  if(reference) primarySeries.push({...reference,col:rf,dash:[6,4]});
+  const base=BASELINE||c, primary=speedSeries(c), baseline=speedSeries(base), reference=r?speedSeries(r):null;
+  const ratedSpeed=rpm(c), opSpeed=c.wss/c.Ng*60/(2*PI), requestedLoad=c.p.tauL;
+  const stallTorque=c.tauSout*1e3;
+  // Use one common scale. Auto-fit is opt-in; locked mode makes changed
+  // voltage / winding / magnet designs VISIBLY move against the dotted baseline.
+  const fitX=Math.max(ratedSpeed,rpm(base),r?rpm(r):0,1)*1.12;
+  const fitY=Math.max(stallTorque,base.tauSout*1e3,r?r.tauSout*1e3:0,requestedLoad,1)*1.13;
+  const xmaxTS=TSSCALEMODE==='fit'?fitX:BASESCALE.x;
+  const ymaxTS=TSSCALEMODE==='fit'?fitY:BASESCALE.y;
+  const overX=ratedSpeed>xmaxTS||!!(r&&rpm(r)>xmaxTS);
+  const overY=stallTorque>ymaxTS||requestedLoad>ymaxTS||!!(r&&r.tauSout*1e3>ymaxTS);
+  const primarySeries=[{...primary,col:cu},{...baseline,col:css('--muted'),dash:[2,5]}];
+  if(reference) primarySeries.push({...reference,col:rf,dash:[7,5]});
+  const markers=[{x:0,y:stallTorque,col:ink},{x:ratedSpeed,y:0,col:ink}];
+  if(c.stalled){
+    if(requestedLoad<=ymaxTS) markers.push({x:0,y:requestedLoad,col:css('--bad'),kind:'cross'});
+  }else markers.push({x:opSpeed,y:requestedLoad,col:cu});
   plot($('pTorqueSpeed'), {
     title:'TORQUE vs SPEED  ·  output shaft', xlab:'output speed (rpm)', ylab:'output torque (mN·m)',
-    xmax:maxSpeed*1.035 || 1, ymax:maxTorque*1.12 || 1,
-    series:primarySeries,
-    pts:[{x:0,y:c.tauSout*1e3,col:ink},
-         {x:ratedSpeed,y:0,col:ink},
-         {x:opSpeed,y:opTorque,col:cu}],
-    vlines:[{x:opSpeed,col:ink}], hx:HSpeed,
-    yu:'mN·m', fmtX:v=>sig(v,4)+' rpm'
+    xmax:xmaxTS,ymax:ymaxTS,series:primarySeries,pts:markers,
+    hlines:requestedLoad>0?[{y:requestedLoad,col:css('--bad'),label:'requested load '+sig(requestedLoad,3)+' mN·m',tcol:css('--bad')}]:[],
+    vlines:!c.stalled?[{x:opSpeed,col:ink}]:[],hx:HSpeed,
+    yu:'mN·m',fmtX:v=>sig(v,4)+' rpm'
   });
-  $('tsSummary').innerHTML = '<span><b>Stall:</b> '+sig(c.tauSout*1e3,4)+' mN·m at 0 rpm</span>'
-    +'<span><b>No load:</b> '+sig(ratedSpeed,5)+' rpm at 0 mN·m</span>'
-    +'<span><b>'+ (c.stalled?'Stalled at selected load':'Operating point')+':</b> '+sig(opSpeed,5)+' rpm, '+sig(opTorque,4)+' mN·m'+(c.stalled?' available (selected load '+sig(c.p.tauL,4)+' mN·m exceeds capacity)':'')+'</span>';
+  const clipped=(overX||overY)&&TSSCALEMODE==='locked';
+  $('tsScaleHint').textContent=clipped?'A curve or the requested load exceeds the locked plot range. Select Auto-fit or reset the baseline to see it.':
+    (TSSCALEMODE==='locked'?'Fixed axes: your changes are directly comparable with the dotted starting baseline.':'Auto-fit shows all curves and the load, but the axes can move with each design.');
+  $('tsScaleHint').className='cap'+(clipped?' ts-warning':'');
+  $('tsSummary').innerHTML = '<span><b>Stall capacity:</b> '+sig(stallTorque,4)+' mN·m at 0 rpm</span>'
+    +'<span><b>No load:</b> '+sig(ratedSpeed,5)+' rpm</span>'
+    +'<span><b>Requested load:</b> '+sig(requestedLoad,4)+' mN·m</span>'
+    +'<span><b>'+ (c.stalled?'STALL: load exceeds available starting torque':'Operating point')+':</b> '
+    +(c.stalled?'0 rpm; available '+sig(stallTorque,4)+' mN·m, requested '+sig(requestedLoad,4)+' mN·m':sig(opSpeed,5)+' rpm at '+sig(requestedLoad,4)+' mN·m')+'</span>'
+    +(clipped?'<span class="ts-warning">Clipped by locked axis limits; choose Auto-fit.</span>':'');
   const xmax=Math.max(c.tauSout*1e3, r?r.tauSout*1e3:0)*1.03;
   const defs=[
    ['pSpeed','Output speed (rpm)','w','rpm',v=>Math.max(...v.cur.w)],
@@ -881,14 +921,16 @@ function update(){
   endView(); sideView(); renderNums(C,REFC); drawCurves(); renderSens(); renderChips(); renderInsp();
   $('lgref').hidden=!REF;
 }
-$('preset').onchange=e=>{P=Object.assign({},PRE[e.target.value]); syncKnobs(); update();};
+$('preset').onchange=e=>{P=Object.assign({},PRE[e.target.value]); setBaseline(); syncKnobs(); update();};
 $('pin').onclick=()=>{REF=Object.assign({},P); REFC=calc(REF); REFSTEP=stepSim(REFC); REFTHERM=thermSim(REFC,REFSTEP); $('refchip').textContent='Reference pinned: change knobs to compare'; update();};
 $('unpin').onclick=()=>{REF=null;REFC=null;REFSTEP=null;REFTHERM=null; $('refchip').textContent='No reference pinned'; update();};
 hookSVG('endv'); hookSVG('sidev');
 window.addEventListener('resize',()=>drawCurves());
 new MutationObserver(()=>update()).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',()=>update());
-buildKnobs(); syncKnobs(); update(); requestAnimationFrame(anim);
+$('tsScaleMode').onchange=e=>{TSSCALEMODE=e.target.value;HSpeed=null;drawCurves();};
+$('tsResetBaseline').onclick=()=>{setBaseline();HSpeed=null;drawCurves();};
+buildKnobs(); syncKnobs(); setBaseline(); update(); requestAnimationFrame(anim);
 })();
 </script>
 
