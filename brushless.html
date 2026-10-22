@@ -182,10 +182,10 @@ details.assume-wrap[open] summary{margin-bottom:8px}
 
   <div class="panel">
     <h2>Steady-state curves at the output shaft</h2>
-    <div class="legend"><span><span class="sw" style="background:var(--cu)"></span>This design (solid)</span><span><span class="sw" style="background:var(--muted)"></span>Starting baseline (dotted)</span><span id="lgref" hidden><span class="sw" style="background:var(--ref)"></span>Reference (dashed)</span><span>Orange dot = operating point; vertical line in additional views = selected load. Hover for values.</span></div>
+    <div class="legend"><span><span class="sw" style="background:var(--cu)"></span>This design (solid)</span><span><span class="sw" style="background:var(--muted)"></span>Starting baseline (dotted)</span><span id="lgref" hidden><span class="sw" style="background:var(--ref)"></span>Reference (dashed)</span><span>Orange dot = operating point; vertical marker across all charts = operating speed. Hover for values.</span></div>
     <!-- Traditional performance convention: SPEED is the horizontal axis, TORQUE is the vertical axis.
-         The existing four torque-indexed charts below remain for complementary comparisons. -->
-    <div class="model-note" role="note" style="margin-bottom:8px"><b>Classic torque-speed characteristic:</b> Horizontal axis = output speed (rpm); vertical axis = available output torque (mN·m). At fixed voltage the ideal viscous-friction model gives a straight line; an ideal current command can introduce a piecewise slope. The selected load sets the operating point, not the curve shape. The dashed horizontal line represents the requested load torque. Axes are held to the starting design until you change scaling. This is not a continuous-duty torque envelope.</div>
+         All four detailed charts below share the same OUTPUT SPEED axis and scaling as the primary graph. -->
+    <div class="model-note" role="note" style="margin-bottom:8px"><b>Classic torque-speed characteristic:</b> Horizontal axis = output speed (rpm); vertical axis = available output torque (mN·m). At fixed voltage the ideal viscous-friction model gives a straight line; an ideal current command can introduce a piecewise slope. The selected load sets the operating point, not the curve shape. The dashed horizontal line represents the requested load torque. All five performance views share one speed axis and the same Locked / Auto-fit choice. Axes are held to the starting design until you change scaling. This is not a continuous-duty torque envelope.</div>
     <div class="ts-tools" aria-label="Torque-speed plotting controls">
       <label for="tsScaleMode">Axis scaling</label>
       <select id="tsScaleMode" aria-label="Torque-speed axis scaling"><option value="locked">Locked to starting baseline</option><option value="fit">Auto-fit all curves and load</option></select>
@@ -194,9 +194,10 @@ details.assume-wrap[open] summary{margin-bottom:8px}
     </div>
     <canvas class="pl ts-primary" id="pTorqueSpeed" aria-label="Conventional motor torque versus speed curve. Horizontal axis is speed in rpm; vertical axis is output torque in millinewton meters."></canvas>
     <div id="tsSummary" class="ts-summary" aria-live="polite"></div>
-    <h3 style="font-size:.92rem;margin:8px 0 5px">Additional performance views (torque on horizontal axis)</h3>
+    <h3 style="font-size:.92rem;margin:8px 0 5px">Performance vs output speed (shared RPM axis)</h3>
+    <p class="cap" style="margin:0 0 8px">All four charts share the output-speed scale above. Black dots mark modeled maximum power and efficiency, not continuous-duty ratings; orange dots mark an achievable loaded operating point.</p>
     <div class="plots">
-      <canvas class="pl" id="pSpeed"></canvas><canvas class="pl" id="pCur"></canvas>
+      <canvas class="pl" id="pTorqueDetail"></canvas><canvas class="pl" id="pCur"></canvas>
       <canvas class="pl" id="pPow"></canvas><canvas class="pl" id="pEff"></canvas>
     </div>
   </div>
@@ -834,19 +835,48 @@ function drawCurves(){
     +'<span><b>'+ (c.stalled?'STALL: load exceeds available starting torque':'Operating point')+':</b> '
     +(c.stalled?'0 rpm; available '+sig(stallTorque,4)+' mN·m, requested '+sig(requestedLoad,4)+' mN·m':sig(opSpeed,5)+' rpm at '+sig(requestedLoad,4)+' mN·m')+'</span>'
     +(clipped?'<span class="ts-warning">Clipped by locked axis limits; choose Auto-fit.</span>':'');
-  const xmax=Math.max(c.tauSout*1e3, r?r.tauSout*1e3:0)*1.03;
-  const defs=[
-   ['pSpeed','Output speed (rpm)','w','rpm',v=>Math.max(...v.cur.w)],
-   ['pCur','Motor current (A)','i','A',v=>Math.max(...v.cur.i)],
-   ['pPow','Output power (W)','P','W',v=>Math.max(...v.cur.P)],
-   ['pEff','Efficiency (%)','e','%',()=>100],
+  // The four supplementary plots use the SAME speed axis as the main
+  // torque-speed characteristic. Samples are reversed to ascending RPM,
+  // which is required for correct mouse-hover interpolation.
+  // Plot labels describe output-shaft quantities, not continuous ratings.
+  const metricDefs=[
+    ['pTorqueDetail','Available torque (mN·m)','t','mN·m'],
+    ['pCur','Motor current (A)','i','A'],
+    ['pPow','Mechanical output power (W)','P','W'],
+    ['pEff','Efficiency (%)','e','%'],
   ];
-  defs.forEach(([id,tt,key,yu,mx])=>{
-    const ser=[{x:c.cur.t,y:c.cur[key],col:cu}]; if(r) ser.push({x:r.cur.t,y:r.cur[key],col:rf,dash:[6,4]});
-    const ymax=Math.max(mx(c),r?mx(r):0)*1.08;
-    const opY = key==='w'?c.wss/c.Ng*60/(2*PI): key==='i'?c.iss: key==='P'?c.Pop: c.effop*100;
-    plot($(id),{title:tt,xlab:'output torque (mN·m)',xmax,ymax,series:ser,vlines:[{x:c.p.tauL,col:ink}],pts:c.stalled?[]:[{x:c.p.tauL,y:opY,col:cu}],hx:HX,yu,fmtX:v=>sig(v,3)+' mN·m'});
+  const reversedMetric=(m,key)=>({x:[...m.cur.w].reverse(),y:[...m.cur[key]].reverse()});
+  const topValue=(m,key)=>Math.max(0,...m.cur[key]);
+  const baselineY={t:Math.max(1,topValue(base,'t')*2.25),
+    i:Math.max(0.001,topValue(base,'i')*2.25),
+    P:Math.max(0.000001,topValue(base,'P')*5),e:100};
+  let secondaryClipped=false;
+  metricDefs.forEach(([id,tt,key,yu])=>{
+    const current=reversedMetric(c,key), initial=reversedMetric(base,key);
+    const ser=[{...current,col:cu},{...initial,col:css('--muted'),dash:[2,5]}];
+    if(r)ser.push({...reversedMetric(r,key),col:rf,dash:[7,5]});
+    const fitMax=Math.max(topValue(c,key),topValue(base,key),r?topValue(r,key):0);
+    const ymax=key==='e'?100:(TSSCALEMODE==='fit'?Math.max(fitMax*1.12,baselineY[key]*0.08):baselineY[key]);
+    if(key!=='e' && fitMax>ymax)secondaryClipped=true;
+    const opY=key==='t'?requestedLoad:key==='i'?c.iss:key==='P'?c.Pop:c.effop*100;
+    // A stalled load cannot be satisfied; do not draw it as a valid point
+    // on the torque, power, efficiency, or current operating characteristic.
+    const pts=c.stalled?[]:[{x:opSpeed,y:opY,col:cu}];
+    const peaks=[];
+    if(key==='P'||key==='e'){
+      const idx=c.cur[key].reduce((a,v,i,arr)=>v>arr[a]?i:a,0);
+      peaks.push({x:c.cur.w[idx],y:c.cur[key][idx],col:css('--ink')});
+    }
+    plot($(id),{title:tt,xlab:'output speed (rpm)',
+      xmax:xmaxTS,ymax,ylab:undefined,
+      series:ser,pts:[...pts,...peaks],
+      vlines:!c.stalled?[{x:opSpeed,col:ink}]:[],
+      hx:HX,yu,fmtX:v=>sig(v,4)+' rpm'});
   });
+  if(secondaryClipped && TSSCALEMODE==='locked'){
+    $('tsScaleHint').textContent+=' One or more additional performance curves also exceeds its locked vertical scale.';
+    $('tsScaleHint').className='cap ts-warning';
+  }
   // step
   const s=STEP, rs=REFSTEP, tmax=Math.max(s.T, rs?rs.T:0), tu= tmax<1? 1e3 : tmax<180? 1 : tmax<3*3600? 1/60 : 1/3600, tl= tmax<1?'ms': tmax<180?'s': tmax<3*3600?'min':'h';
   const tx=a=>a.map(v=>v*tu);
@@ -878,12 +908,12 @@ function drawCurves(){
   if(!STEP.converged) $('stepcap').textContent+=' The step plot reaches its 48-hour display limit before the computed steady state; the thermal model uses the evolving trajectory up to its own 24-hour limit.';
   if(c.stalled) $('stepcap').textContent+=' The output is stalled under the selected opposing load.';
 }
-// The new speed-axis hover is separate from the torque-axis hover in the four existing charts.
+// The primary and secondary charts share RPM on X; each tracks its own hover position.
 (()=>{const cv=$('pTorqueSpeed');
   cv.addEventListener('mousemove',e=>{const m=cv._map;if(!m)return;const r=cv.getBoundingClientRect();HSpeed=(e.clientX-r.left-m.ml)/m.pw*m.xmax;drawCurves();});
   cv.addEventListener('mouseleave',()=>{HSpeed=null;drawCurves();});
 })();
-['pSpeed','pCur','pPow','pEff'].forEach(id=>{ const cv=$(id);
+['pTorqueDetail','pCur','pPow','pEff'].forEach(id=>{ const cv=$(id);
   cv.addEventListener('mousemove',e=>{const m=cv._map; if(!m)return; const r=cv.getBoundingClientRect(); HX=(e.clientX-r.left-m.ml)/m.pw*m.xmax; drawCurves();});
   cv.addEventListener('mouseleave',()=>{HX=null;drawCurves();}); });
 (()=>{ const cv=$('thermP');

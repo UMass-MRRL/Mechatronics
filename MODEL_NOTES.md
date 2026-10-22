@@ -88,29 +88,10 @@ piecewise-linear characteristic, limited ultimately by the modeled supply
 voltage. Brushless magnetics and commutation remain averaged/idealized.
 Motor performance curves must not be used as continuous operating envelopes.
 
+## Shared output-speed plots (2026-10-21 update)
 
-## Torque-speed display and locked axes (October 2026 update)
+The brushed, coreless and brushless web motor pages use **output shaft speed (rpm)** as the horizontal coordinate for all five steady-state graphics: the primary torque-speed diagram and detailed torque, motor current, mechanical output power, and efficiency diagrams. The original model still computes characteristic samples parametrically and reverses sample order to ensure ascending speed for correct hover interpolation. No motor equations are changed.
 
-All three motor pages show **torque (mN·m) versus output speed (rpm)** on
-one common plot. A dotted initial-design curve remains visible by default.
-The initial fixed axes extend to approximately 2.25 times the starting
-no-load speed and stall torque, leaving enough room for a typical 2x
-voltage experiment. **Those bounds are a visualization choice, not a motor
-limit.** Large changes can extend beyond this frame; an explicit warning
-appears. Choose **Auto-fit all curves and load** to display the full curves
-and applied load, or **Use current design as baseline** to capture a new
-fixed comparison scale. Auto-fit may make curves look similar again because
-it changes the axes.
+Every chart uses the *same speed limit*, selected by Locked to starting baseline or Auto-fit. Torque, current and mechanical output power have their own vertical scales. In locked mode, each vertical scale is based on the starting baseline; curves can be clipped when a parameter is changed substantially and the interface displays a warning. Efficiency is displayed on a 0–100% scale. In auto-fit mode, the plotting range is expanded for the current, starting and pinned designs.
 
-The red horizontal load line is an external torque demand. Where it
-intersects an attainable steady torque-speed characteristic, the marker is
-the modeled operating point. If demanded load torque exceeds predicted
-starting torque, no positive-speed equilibrium is available in these
-models. The simulator reports a **stalled/unmet** demand rather than
-plotting the unachievable load as an operating point. The red cross at
-zero speed marks demand, not torque delivered by the motor.
-
-These edits affect **visualization only**. The steady-state, electrical,
-mechanical, and thermal motor equations have not been changed. The
-associated MATLAB v2.4 GUI now uses a matching visualization convention;
-it requires native MATLAB runtime verification before classroom release.
+The selected operating speed is shown on all detailed graphs only when the requested torque is achievable. When the motor is stalled by an excessive demand, these graphs deliberately omit a misleading loaded operating marker. A black marker identifies the sampled *theoretical maximum* on each power and efficiency curve. It does not establish continuous-duty power, temperature limits, or a safe operating point. The graph does not model torque ripple, inverter efficiency, switching losses, or nonlinear saturation.
