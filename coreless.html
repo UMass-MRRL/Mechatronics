@@ -83,6 +83,9 @@ svg [data-k]:hover{filter:brightness(1.12)}
 .plots{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 @media (max-width:700px){.plots{grid-template-columns:1fr}}
 canvas.pl{width:100%;height:170px;display:block;cursor:crosshair}
+canvas.pl.ts-primary{height:255px;max-width:100%}
+.ts-summary{display:flex;flex-wrap:wrap;gap:7px 20px;padding:8px 0 10px;font-size:.86rem;color:var(--ink)}
+.ts-summary b{color:var(--brandfg)}
 .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:.82rem;color:var(--muted);margin-bottom:6px}
 .sw{display:inline-block;width:18px;height:3px;vertical-align:middle;margin-right:6px;border-radius:2px}
 .tblwrap{overflow-x:auto}
@@ -172,7 +175,13 @@ details.assume-wrap[open] summary{margin-bottom:8px}
 
   <div class="panel">
     <h2>Steady-state curves at the output shaft</h2>
-    <div class="legend"><span><span class="sw" style="background:var(--cu)"></span>This design</span><span id="lgref" hidden><span class="sw" style="background:var(--ref)"></span>Reference (dashed)</span><span>Vertical line = your load torque τ<sub>L</sub>. Hover to read values.</span></div>
+    <div class="legend"><span><span class="sw" style="background:var(--cu)"></span>This design</span><span id="lgref" hidden><span class="sw" style="background:var(--ref)"></span>Reference (dashed)</span><span>Orange dot = operating point; vertical line in additional views = selected load. Hover for values.</span></div>
+    <!-- Traditional performance convention: SPEED is the horizontal axis, TORQUE is the vertical axis.
+         The existing four torque-indexed charts below remain for complementary comparisons. -->
+    <div class="model-note" role="note" style="margin-bottom:8px"><b>Classic torque-speed characteristic:</b> Horizontal axis = output speed (rpm); vertical axis = available output torque (mN·m). At fixed voltage the ideal viscous-friction model gives a straight line; an ideal current command can introduce a piecewise slope. The selected load sets the operating point, not the curve shape. This is not a continuous-duty torque envelope.</div>
+    <canvas class="pl ts-primary" id="pTorqueSpeed" aria-label="Conventional motor torque versus speed curve. Horizontal axis is speed in rpm; vertical axis is output torque in millinewton meters."></canvas>
+    <div id="tsSummary" class="ts-summary" aria-live="polite"></div>
+    <h3 style="font-size:.92rem;margin:8px 0 5px">Additional performance views (torque on horizontal axis)</h3>
     <div class="plots">
       <canvas class="pl" id="pSpeed"></canvas><canvas class="pl" id="pCur"></canvas>
       <canvas class="pl" id="pPow"></canvas><canvas class="pl" id="pEff"></canvas>
@@ -720,6 +729,8 @@ function plot(cv,o){
   const ys=nice(yrange/4); for(let j=0, v=Math.ceil(ymin/ys)*ys;j<100&&v<=ymax+ys*1e-8;j++,v=Math.ceil(ymin/ys)*ys+j*ys){ g.beginPath(); g.moveTo(ml,Y(v)); g.lineTo(ml+pw,Y(v)); g.stroke(); g.textAlign='right'; g.fillText(sig(v,3),ml-6,Y(v)+3); }
   const xs=nice(xmax/4); g.textAlign='center'; for(let v=0;v<=xmax*1.0001;v+=xs){ g.fillText(sig(v,3),X(v),mt+ph+13); }
   g.textAlign='right'; g.fillText(o.xlab,ml+pw,H-3); g.textAlign='left';
+  // Only the classic torque-speed chart needs an explicit vertical-axis label.
+  if(o.ylab){g.save();g.translate(12,mt+ph/2);g.rotate(-Math.PI/2);g.textAlign='center';g.fillText(o.ylab,0,0);g.restore();}
   g.save(); g.beginPath(); g.rect(ml,mt-2,pw+2,ph+4); g.clip();
   (o.hlines||[]).forEach(v=>{ if(v.y>=ymin&&v.y<=ymax){ g.strokeStyle=v.col; g.setLineDash([5,4]); g.beginPath(); g.moveTo(ml,Y(v.y)); g.lineTo(ml+pw,Y(v.y)); g.stroke(); g.setLineDash([]); if(v.label){ g.fillStyle=v.tcol||mut; g.font='10px '+css('--f-mono'); g.textAlign='right'; g.fillText(v.label,ml+pw-4,Y(v.y)-4); g.textAlign='left'; } } });
   (o.vlines||[]).forEach(v=>{ if(v.x>=0&&v.x<=xmax){ g.strokeStyle=v.col; g.setLineDash([4,3]); g.beginPath(); g.moveTo(X(v.x),mt); g.lineTo(X(v.x),mt+ph); g.stroke(); g.setLineDash([]);} });
@@ -736,9 +747,35 @@ function plot(cv,o){
   cv._map={ml,pw,xmax};
 }
 function interp(xs,ys,x){ if(!xs.length) return NaN; if(x<=xs[0]) return ys[0]; for(let i=1;i<xs.length;i++){ if(xs[i]>=x){ const f=(x-xs[i-1])/((xs[i]-xs[i-1])||1); return ys[i-1]+f*(ys[i]-ys[i-1]); } } return NaN; }
-let STEP, REFC=null, REFSTEP=null, THERM, REFTHERM=null, HTh=null;
+let STEP, REFC=null, REFSTEP=null, THERM, REFTHERM=null, HTh=null, HSpeed=null;
 function drawCurves(){
   const c=C, r=REFC, cu=css('--cu'), rf=css('--ref'), ink=css('--ink');
+  // Traditional speed (horizontal) vs available output torque (vertical).
+  // Reverse the steady-state samples because c.cur is generated from no-load
+  // to stall (descending speed, ascending torque). The shared interpolator
+  // requires ascending horizontal coordinates for meaningful hover readings.
+  const rpm = m => m.w0out * 60/(2*PI);
+  const speedSeries = m => ({x:[...m.cur.w].reverse(), y:[...m.cur.t].reverse()});
+  const primary = speedSeries(c), reference = r ? speedSeries(r) : null;
+  const ratedSpeed = rpm(c), opSpeed = c.wss/c.Ng*60/(2*PI);
+  const maxSpeed = Math.max(ratedSpeed, r ? rpm(r) : 0);
+  const maxTorque = Math.max(c.tauSout*1e3, r ? r.tauSout*1e3 : 0);
+  const opTorque = c.stalled ? c.tauSout*1e3 : c.p.tauL;
+  const primarySeries = [{...primary,col:cu}];
+  if(reference) primarySeries.push({...reference,col:rf,dash:[6,4]});
+  plot($('pTorqueSpeed'), {
+    title:'TORQUE vs SPEED  ·  output shaft', xlab:'output speed (rpm)', ylab:'output torque (mN·m)',
+    xmax:maxSpeed*1.035 || 1, ymax:maxTorque*1.12 || 1,
+    series:primarySeries,
+    pts:[{x:0,y:c.tauSout*1e3,col:ink},
+         {x:ratedSpeed,y:0,col:ink},
+         {x:opSpeed,y:opTorque,col:cu}],
+    vlines:[{x:opSpeed,col:ink}], hx:HSpeed,
+    yu:'mN·m', fmtX:v=>sig(v,4)+' rpm'
+  });
+  $('tsSummary').innerHTML = '<span><b>Stall:</b> '+sig(c.tauSout*1e3,4)+' mN·m at 0 rpm</span>'
+    +'<span><b>No load:</b> '+sig(ratedSpeed,5)+' rpm at 0 mN·m</span>'
+    +'<span><b>'+ (c.stalled?'Stalled at selected load':'Operating point')+':</b> '+sig(opSpeed,5)+' rpm, '+sig(opTorque,4)+' mN·m'+(c.stalled?' available (selected load '+sig(c.p.tauL,4)+' mN·m exceeds capacity)':'')+'</span>';
   const xmax=Math.max(c.tauSout*1e3, r?r.tauSout*1e3:0)*1.03;
   const defs=[
    ['pSpeed','Output speed (rpm)','w','rpm',v=>Math.max(...v.cur.w)],
@@ -783,6 +820,11 @@ function drawCurves(){
   if(!STEP.converged) $('stepcap').textContent+=' The step plot reaches its 48-hour display limit before the computed steady state; the thermal model uses the evolving trajectory up to its own 24-hour limit.';
   if(c.stalled) $('stepcap').textContent+=' The output is stalled under the selected opposing load.';
 }
+// The new speed-axis hover is separate from the torque-axis hover in the four existing charts.
+(()=>{const cv=$('pTorqueSpeed');
+  cv.addEventListener('mousemove',e=>{const m=cv._map;if(!m)return;const r=cv.getBoundingClientRect();HSpeed=(e.clientX-r.left-m.ml)/m.pw*m.xmax;drawCurves();});
+  cv.addEventListener('mouseleave',()=>{HSpeed=null;drawCurves();});
+})();
 ['pSpeed','pCur','pPow','pEff'].forEach(id=>{ const cv=$(id);
   cv.addEventListener('mousemove',e=>{const m=cv._map; if(!m)return; const r=cv.getBoundingClientRect(); HX=(e.clientX-r.left-m.ml)/m.pw*m.xmax; drawCurves();});
   cv.addEventListener('mouseleave',()=>{HX=null;drawCurves();}); });

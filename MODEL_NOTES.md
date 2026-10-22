@@ -68,3 +68,22 @@ Do not report the simulator's temperature threshold as a safe stall time, compar
 ## Change history
 
 **2026-10-21 publication-documentation revision:** Clarified scope in every simulator; renamed motor drawing headings; removed vendor-like descriptions from example preset labels; qualified output panels and thermal plots; inserted modeling comments adjacent to implementation; expanded README with interpretation guide, references, model notes, and experimental-validation status. The mathematical and protocol simulation algorithms were intentionally left unchanged; numerical equivalence should still be independently tested before formal classroom release.
+
+
+## Conventional motor torque-speed chart (2026-10-21 update)
+
+The three motor designs expose the theoretical steady-state **available torque**
+(mN·m) against **output speed** (rpm), with the conventional axis orientation:
+speed on X and torque on Y. The plotted stall intercept is the model's
+instantaneous available output torque at zero speed, not a safe sustained
+stall rating. The no-load intercept is calculated with modeled viscous losses,
+not necessarily a measured datasheet no-load speed. The selected operating
+point indicates the equilibrium under the user-specified constant load;
+when this load exceeds stall capability, the motor is marked stalled at its
+available stall torque instead of falsely plotting an impossible operating torque.
+
+For voltage drive and positive constant coefficients, the plot is linear.
+For current drive, an ideal instantaneous current ceiling can produce a
+piecewise-linear characteristic, limited ultimately by the modeled supply
+voltage. Brushless magnetics and commutation remain averaged/idealized.
+Motor performance curves must not be used as continuous operating envelopes.
